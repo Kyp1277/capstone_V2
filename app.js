@@ -6,6 +6,7 @@ const state = {
   isAnalyzing: false,
   error: "",
   mobileMenuOpen: false,
+  theme: getInitialTheme(),
   currentAnalysis: {
     id: "analysis-001",
     targetRole: "Frontend Developer",
@@ -91,6 +92,7 @@ function currentPath() {
 }
 
 function shell(content) {
+  applyTheme();
   return `
     <div class="app-shell">
       ${navbar()}
@@ -102,6 +104,7 @@ function shell(content) {
 
 function navbar() {
   const path = currentPath();
+  const isDark = state.theme === "dark";
   const links = [
     ["Beranda", "/"],
     ["Fitur", "/#features"],
@@ -126,6 +129,7 @@ function navbar() {
               .join("")}
           </nav>
           <div class="nav-actions">
+            ${themeButton(isDark)}
             <a href="#/upload" class="btn btn-primary">Mulai Analisis</a>
           </div>
           <button class="mobile-toggle ${state.mobileMenuOpen ? "active" : ""}" type="button" aria-label="Buka menu" aria-expanded="${state.mobileMenuOpen}" data-action="toggle-menu">
@@ -140,9 +144,19 @@ function navbar() {
           <a class="nav-link" href="#/upload">Analisis CV</a>
           <a class="nav-link" href="#/dashboard">Dashboard</a>
           <a class="nav-link" href="#/history">Riwayat</a>
+          ${themeButton(isDark, "mobile")}
         </nav>
       </div>
     </header>
+  `;
+}
+
+function themeButton(isDark, variant = "desktop") {
+  return `
+    <button class="theme-toggle ${variant === "mobile" ? "theme-toggle-mobile" : ""}" type="button" data-action="toggle-theme" aria-label="${isDark ? "Aktifkan light mode" : "Aktifkan dark mode"}">
+      <span class="theme-toggle-icon" aria-hidden="true"></span>
+      <span class="theme-toggle-label">${isDark ? "Light mode" : "Dark mode"}</span>
+    </button>
   `;
 }
 
@@ -194,7 +208,7 @@ function renderLanding() {
                 <p class="mockup-title">Frontend Developer</p>
                 <p class="mockup-subtitle">Hasil analisis AI berdasarkan CV dan target role</p>
               </div>
-              <div class="score-mini">82%</div>
+              <div class="score-mini" data-count-to="82">0%</div>
             </div>
             <div class="mockup-grid">
               <div class="mini-panel">
@@ -382,8 +396,8 @@ function renderDashboard() {
       <div class="dashboard-column">
         <article class="card dashboard-card score-card">
           <h3>Match Score</h3>
-          <div class="score-circle" style="background: radial-gradient(circle at center, #fff 58%, transparent 59%), conic-gradient(var(--success) 0 ${data.score}%, #e2e8f0 ${data.score}% 100%);">
-            <span class="score-value">${data.score}%</span>
+          <div class="score-circle" style="background: radial-gradient(circle at center, var(--score-hole) 58%, transparent 59%), conic-gradient(var(--success) 0 ${data.score}%, var(--border) ${data.score}% 100%);">
+            <span class="score-value" data-count-to="${data.score}">0%</span>
           </div>
           <span class="score-label">${data.verdict}</span>
           <p>Cocok untuk posisi junior hingga mid-level dengan fokus penguatan pada missing skills.</p>
@@ -462,11 +476,11 @@ function renderHistory() {
         </article>
         <article class="card summary-item">
           <p class="summary-label">Total analisis</p>
-          <p class="summary-value">${state.history.length}</p>
+          <p class="summary-value" data-count-to="${state.history.length}">0</p>
         </article>
         <article class="card summary-item">
           <p class="summary-label">Rata-rata score</p>
-          <p class="summary-value">${avgScore}%</p>
+          <p class="summary-value" data-count-to="${avgScore}">0%</p>
         </article>
         <article class="card summary-item">
           <p class="summary-label">Status</p>
@@ -549,10 +563,20 @@ function render() {
   const renderer = routes[path] || renderNotFound;
   app.innerHTML = renderer();
   bindEvents();
+  initAnimations();
   syncAnchorScroll();
 }
 
 function bindEvents() {
+  document.querySelectorAll("[data-action='toggle-theme']").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.theme = state.theme === "dark" ? "light" : "dark";
+      window.localStorage.setItem("jobfit-theme", state.theme);
+      applyTheme();
+      render();
+    });
+  });
+
   document.querySelectorAll("[data-action='toggle-menu']").forEach((button) => {
     button.addEventListener("click", () => {
       state.mobileMenuOpen = !state.mobileMenuOpen;
@@ -727,6 +751,18 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function getInitialTheme() {
+  const savedTheme = window.localStorage.getItem("jobfit-theme");
+  if (savedTheme === "dark" || savedTheme === "light") {
+    return savedTheme;
+  }
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function applyTheme() {
+  document.documentElement.dataset.theme = state.theme;
+}
+
 function syncAnchorScroll() {
   const hash = window.location.hash;
   if (hash.includes("#features") || hash.includes("#workflow")) {
@@ -737,6 +773,54 @@ function syncAnchorScroll() {
   } else {
     window.scrollTo({ top: 0 });
   }
+}
+
+function initAnimations() {
+  document
+    .querySelectorAll(".card, .eyebrow, .hero h1, .hero-copy, .hero-actions, .hero-metrics, .page-title")
+    .forEach((element) => {
+      element.classList.add("reveal");
+    });
+
+  const revealElements = document.querySelectorAll(".reveal");
+  if ("IntersectionObserver" in window) {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("revealed");
+            observer.unobserve(entry.target);
+          }
+        });
+      },
+      { threshold: 0.12 }
+    );
+    revealElements.forEach((element) => observer.observe(element));
+  } else {
+    revealElements.forEach((element) => element.classList.add("revealed"));
+  }
+
+  document.querySelectorAll("[data-count-to]").forEach((element) => animateCount(element));
+}
+
+function animateCount(element) {
+  const target = Number(element.dataset.countTo || 0);
+  const hasPercent = element.textContent.includes("%");
+  const duration = 850;
+  const start = performance.now();
+
+  function tick(now) {
+    const progress = Math.min((now - start) / duration, 1);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    const value = Math.round(target * eased);
+    element.textContent = `${value}${hasPercent ? "%" : ""}`;
+
+    if (progress < 1) {
+      window.requestAnimationFrame(tick);
+    }
+  }
+
+  window.requestAnimationFrame(tick);
 }
 
 window.addEventListener("hashchange", () => {
