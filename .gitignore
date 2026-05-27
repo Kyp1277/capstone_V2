@@ -1,0 +1,7 @@
+.codex-jobdesk-backend/
+.codex-python-packages/
+__pycache__/
+*.pyc
+*.log
+backend/.env
+backend/data/processed_jobs_cache.json

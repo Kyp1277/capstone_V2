@@ -1,0 +1,102 @@
+[
+  {
+    "id": "it_frontend_mid",
+    "name": "Frontend developer dengan React",
+    "targetRole": "Frontend Developer",
+    "analysisMode": "targeted",
+    "cvText": "Frontend Developer dengan 3 tahun pengalaman membangun dashboard web menggunakan HTML, CSS, JavaScript, React, Git, REST API, responsive design, dan UI component. Pernah optimasi performance halaman dan bekerja dengan product team.",
+    "expectedSkills": ["javascript", "react", "git", "rest api"],
+    "expectedTopRoleKeywords": ["frontend", "react", "web"],
+    "forbiddenTopRoleKeywords": ["accounting", "driver", "sales"]
+  },
+  {
+    "id": "it_backend",
+    "name": "Backend engineer Python",
+    "targetRole": "Backend Engineer",
+    "analysisMode": "targeted",
+    "cvText": "Backend Engineer berpengalaman 4 tahun dengan Python, FastAPI, PostgreSQL, REST API, Docker, Git, database optimization, unit testing, dan deployment service. Pernah membangun API untuk sistem analytics.",
+    "expectedSkills": ["python", "fastapi", "postgresql", "docker", "rest api"],
+    "expectedTopRoleKeywords": ["backend", "python", "developer", "engineer"],
+    "forbiddenTopRoleKeywords": ["designer", "accounting", "sales"]
+  },
+  {
+    "id": "data_analyst",
+    "name": "Data analyst SQL Python",
+    "targetRole": "Data Analyst",
+    "analysisMode": "targeted",
+    "cvText": "Data Analyst dengan pengalaman SQL, Python, Excel, dashboard, data visualization, statistics, ETL sederhana, dan reporting untuk tim bisnis. Membuat insight penjualan dan presentasi ke stakeholder.",
+    "expectedSkills": ["sql", "python", "excel", "data visualization"],
+    "expectedTopRoleKeywords": ["data", "analyst", "business intelligence"],
+    "forbiddenTopRoleKeywords": ["frontend", "driver", "operator produksi"]
+  },
+  {
+    "id": "freshgraduate_it",
+    "name": "Fresh graduate informatika",
+    "targetRole": "Junior Software Developer",
+    "analysisMode": "targeted",
+    "cvText": "Fresh graduate Teknik Informatika. Project kuliah membuat aplikasi web dengan JavaScript, PHP, MySQL, HTML, CSS, Git, dan dasar REST API. Aktif dalam organisasi dan terbiasa problem solving.",
+    "expectedSkills": ["javascript", "php", "mysql", "html", "css", "git"],
+    "expectedTopRoleKeywords": ["junior", "developer", "web", "software"],
+    "forbiddenTopRoleKeywords": ["manager", "accounting", "driver"]
+  },
+  {
+    "id": "admin_staff",
+    "name": "Admin staff non IT",
+    "targetRole": "Administrative Staff",
+    "analysisMode": "auto",
+    "cvText": "Administrative Staff dengan pengalaman 2 tahun mengelola dokumen, Microsoft Excel, data entry, filing, scheduling, customer service, surat menyurat, dan koordinasi operasional kantor.",
+    "expectedSkills": ["excel", "data entry", "customer service"],
+    "expectedTopRoleKeywords": ["admin", "administrative", "staff", "office"],
+    "forbiddenTopRoleKeywords": ["frontend", "backend", "react", "software engineer"]
+  },
+  {
+    "id": "finance_accounting",
+    "name": "Finance accounting",
+    "targetRole": "Finance Staff",
+    "analysisMode": "auto",
+    "cvText": "Finance Staff dengan pengalaman membuat laporan keuangan, invoice, account payable, account receivable, rekonsiliasi bank, pajak, Microsoft Excel, dan administrasi finance.",
+    "expectedSkills": ["excel", "finance", "accounting"],
+    "expectedTopRoleKeywords": ["finance", "accounting", "account", "tax"],
+    "forbiddenTopRoleKeywords": ["frontend", "designer", "driver"]
+  },
+  {
+    "id": "graphic_designer",
+    "name": "Graphic designer",
+    "targetRole": "Graphic Designer",
+    "analysisMode": "targeted",
+    "cvText": "Graphic Designer dengan 3 tahun pengalaman membuat social media design, branding, layout, Adobe Photoshop, Illustrator, Figma, typography, dan visual campaign untuk marketing.",
+    "expectedSkills": ["photoshop", "illustrator", "figma", "branding"],
+    "expectedTopRoleKeywords": ["designer", "graphic", "creative", "visual"],
+    "forbiddenTopRoleKeywords": ["backend", "accounting", "driver"]
+  },
+  {
+    "id": "operator_produksi",
+    "name": "Operator produksi",
+    "targetRole": "Production Operator",
+    "analysisMode": "auto",
+    "cvText": "Production operator berpengalaman di pabrik selama 2 tahun. Terbiasa menjalankan mesin produksi, machine operator, packing, laporan shift, dan menjaga target output harian.",
+    "expectedSkills": ["production operator", "machine operator"],
+    "expectedTopRoleKeywords": ["operator", "production", "quality", "manufacturing"],
+    "forbiddenTopRoleKeywords": ["frontend", "software", "accounting"]
+  },
+  {
+    "id": "hr_recruiter",
+    "name": "HR recruiter",
+    "targetRole": "HR Recruiter",
+    "analysisMode": "targeted",
+    "cvText": "HR Recruiter dengan pengalaman screening CV, interview kandidat, onboarding, employee database, job posting, communication, Microsoft Excel, dan koordinasi kebutuhan hiring.",
+    "expectedSkills": ["recruitment", "interview", "excel", "communication"],
+    "expectedTopRoleKeywords": ["hr", "recruiter", "human resource", "talent"],
+    "forbiddenTopRoleKeywords": ["frontend", "driver", "finance"]
+  },
+  {
+    "id": "sales_marketing",
+    "name": "Sales marketing",
+    "targetRole": "Sales Marketing",
+    "analysisMode": "auto",
+    "cvText": "Sales Marketing dengan pengalaman mencari prospect, cold calling, customer relationship, negotiation, sales target, presentation, CRM, dan membuat laporan penjualan mingguan.",
+    "expectedSkills": ["sales", "marketing", "communication", "crm"],
+    "expectedTopRoleKeywords": ["sales", "marketing", "business development", "account executive"],
+    "forbiddenTopRoleKeywords": ["backend", "operator produksi", "accounting"]
+  }
+]
