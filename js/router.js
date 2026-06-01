@@ -1,5 +1,5 @@
 import { bindEvents } from "./events.js";
-import { state } from "./state.js";
+import { findAnalysisById, state } from "./state.js";
 import { renderAccount } from "./pages/account.js";
 import { renderDashboard } from "./pages/dashboard.js";
 import { renderHistory } from "./pages/history.js";
@@ -10,7 +10,7 @@ import { renderRegister } from "./pages/register.js";
 import { renderSettings } from "./pages/settings.js";
 import { renderUpload } from "./pages/upload.js";
 import { renderVerifyOtp } from "./pages/verify-otp.js";
-import { initAnimations, syncAnchorScroll } from "./utils.js";
+import { initAnimations, syncAnchorScroll, updatePageTitle } from "./utils.js";
 
 const app = document.querySelector("#app");
 
@@ -68,6 +68,27 @@ export function render() {
   bindEvents();
   initAnimations();
   syncAnchorScroll();
+  updatePageTitle(getPageTitle(path, route.params));
+}
+
+function getPageTitle(path, params) {
+  const titles = {
+    "/": "",
+    "/login": "Masuk",
+    "/register": "Daftar",
+    "/verify-otp": "Verifikasi Email",
+    "/account": "Dashboard",
+    "/settings": "Pengaturan Akun",
+    "/upload": "Analisis CV",
+    "/history": "Riwayat Analisis",
+  };
+
+  if (path === "/dashboard") {
+    const analysis = findAnalysisById(params?.analysisId);
+    return analysis ? `${analysis.targetRole} — Dashboard` : "Dashboard Hasil";
+  }
+
+  return titles[path] ?? "Halaman Tidak Ditemukan";
 }
 
 function resolveRoute(path) {

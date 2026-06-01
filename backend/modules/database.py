@@ -17,10 +17,18 @@ PASSWORD_ITERATIONS = 210_000
 SESSION_DAYS = int(os.environ.get("SESSION_DAYS", "30"))
 OTP_MINUTES = int(os.environ.get("OTP_MINUTES", "10"))
 MAX_OTP_ATTEMPTS = int(os.environ.get("MAX_OTP_ATTEMPTS", "5"))
+SESSION_TOKEN_PREFIX = "sha256$"
 
 
 def get_database_url():
     return os.environ.get("DATABASE_URL") or os.environ.get("POSTGRES_URL")
+
+
+def hash_session_token(token):
+    if not token:
+        return ""
+    digest = hashlib.sha256(str(token).encode("utf-8")).hexdigest()
+    return f"{SESSION_TOKEN_PREFIX}{digest}"
 
 
 def get_connection():
@@ -224,6 +232,7 @@ def authenticate_user(email, password):
 
 def create_session(user_id):
     token = secrets.token_urlsafe(32)
+    token_hash = hash_session_token(token)
     expires_at = datetime.now(timezone.utc) + timedelta(days=SESSION_DAYS)
 
     with get_connection() as connection:
@@ -233,7 +242,7 @@ def create_session(user_id):
                 INSERT INTO sessions (token, user_id, expires_at)
                 VALUES (%s, %s, %s)
                 """,
-                (token, user_id, expires_at),
+                (token_hash, user_id, expires_at),
             )
         connection.commit()
 
@@ -375,6 +384,8 @@ def get_user_by_token(token):
     if not token:
         return None
 
+    token_hash = hash_session_token(token)
+
     try:
         from psycopg.rows import dict_row
     except ImportError as error:
@@ -390,7 +401,7 @@ def get_user_by_token(token):
                 JOIN users ON users.id = sessions.user_id
                 WHERE sessions.token = %s AND sessions.expires_at > NOW()
                 """,
-                (token,),
+                (token_hash,),
             )
             row = cursor.fetchone()
         connection.commit()
@@ -402,9 +413,11 @@ def delete_session(token):
     if not token:
         return
 
+    token_hash = hash_session_token(token)
+
     with get_connection() as connection:
         with connection.cursor() as cursor:
-            cursor.execute("DELETE FROM sessions WHERE token = %s", (token,))
+            cursor.execute("DELETE FROM sessions WHERE token = %s", (token_hash,))
         connection.commit()
 
 

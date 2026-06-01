@@ -1,5 +1,24 @@
 // File ini berisi helper kecil yang dipakai lintas halaman.
 
+// =========================================
+// SCORE COLOR ADAPTIVE
+// =========================================
+// Mengembalikan CSS variable warna berdasarkan score range:
+// hijau >= 75, kuning 50-74, merah < 50.
+export function scoreColor(score) {
+  const n = Number(score || 0);
+  if (n >= 75) return "var(--success)";
+  if (n >= 50) return "var(--warning)";
+  return "var(--danger)";
+}
+
+export function scoreLabelClass(score) {
+  const n = Number(score || 0);
+  if (n >= 75) return "score-label-high";
+  if (n >= 50) return "score-label-mid";
+  return "score-label-low";
+}
+
 export function getInitialTheme() {
   // Prioritas theme: pilihan user di localStorage, lalu preferensi OS.
   const savedTheme = window.localStorage.getItem("jobfit-theme");
@@ -130,4 +149,57 @@ export function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+// =========================================
+// DEBOUNCE
+// =========================================
+export function debounce(fn, delay = 300) {
+  let timer;
+  return function (...args) {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn.apply(this, args), delay);
+  };
+}
+
+// =========================================
+// TOAST NOTIFICATION
+// =========================================
+let toastTimeout = null;
+
+export function showToast(message, type = "success", durationMs = 3500) {
+  // Hapus toast lama jika masih tampil.
+  const existing = document.getElementById("jobfit-toast");
+  if (existing) {
+    existing.remove();
+  }
+  clearTimeout(toastTimeout);
+
+  const toast = document.createElement("div");
+  toast.id = "jobfit-toast";
+  toast.className = `toast toast-${type}`;
+  toast.setAttribute("role", "status");
+  toast.setAttribute("aria-live", "polite");
+  toast.textContent = message;
+  document.body.appendChild(toast);
+
+  // Trigger reflow agar animasi masuk bisa jalan.
+  void toast.offsetWidth;
+  toast.classList.add("toast-visible");
+
+  toastTimeout = setTimeout(() => {
+    toast.classList.remove("toast-visible");
+    toast.addEventListener("transitionend", () => toast.remove(), { once: true });
+    // Fallback jika transitionend tidak fire.
+    setTimeout(() => toast.remove(), 400);
+  }, durationMs);
+}
+
+// =========================================
+// DYNAMIC PAGE TITLE
+// =========================================
+const BASE_TITLE = "JobFit";
+
+export function updatePageTitle(subtitle) {
+  document.title = subtitle ? `${subtitle} — ${BASE_TITLE}` : `${BASE_TITLE} - AI CV Match Analyzer`;
 }

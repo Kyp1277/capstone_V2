@@ -1,10 +1,10 @@
 import { shell } from "../layout.js";
 import { state } from "../state.js";
-import { escapeHtml } from "../utils.js";
+import { escapeHtml, scoreColor } from "../utils.js";
 
 // Renderer landing page: hero, fitur utama, dan workflow.
 export function renderLanding() {
-  const latestAnalysis = state.analyses[0] || null;
+  const latestAnalysis = state.auth.isAuthenticated ? state.analyses[0] || null : null;
   const hasAnalysis = Boolean(latestAnalysis?.id);
   const topJob = Array.isArray(latestAnalysis?.jobs) ? latestAnalysis.jobs[0] : null;
   const mockupTitle = hasAnalysis
@@ -16,6 +16,12 @@ export function renderLanding() {
   const mockupScore = hasAnalysis ? Number(topJob?.match || latestAnalysis.score || 0) : 0;
   const detectedSkills = hasAnalysis ? safeList(latestAnalysis.detectedSkills).slice(0, 3) : [];
   const missingSkills = hasAnalysis ? safeList(latestAnalysis.missingSkills).slice(0, 2) : [];
+  const topJobMatch = Number(topJob?.match || latestAnalysis?.score || 0);
+  const executiveActions = hasAnalysis ? safeList(latestAnalysis.improvements).slice(0, 3) : [
+    "Upload CV PDF teks untuk membaca skill dan pengalaman.",
+    "Pilih target pekerjaan atau gunakan mode otomatis.",
+    "Buka dashboard untuk melihat score, gap, dan rekomendasi job."
+  ];
 
   return shell(`
     <section class="hero">
@@ -29,16 +35,16 @@ export function renderLanding() {
           </p>
           <div class="hero-actions">
             <a href="#/upload" class="btn btn-primary">Mulai Analisis CV</a>
-            <a href="#/#workflow" class="btn btn-secondary">Lihat Cara Kerja</a>
+            <a href="${hasAnalysis ? `#/dashboard/${encodeURIComponent(latestAnalysis.id)}` : "#/#workflow"}" class="btn btn-secondary">Lihat Demo Hasil</a>
           </div>
           <div class="hero-metrics">
-            <span class="metric-pill"><span class="metric-dot"></span>CV parsing</span>
-            <span class="metric-pill"><span class="metric-dot"></span>NLP skill extraction</span>
-            <span class="metric-pill"><span class="metric-dot"></span>Rekomendasi pekerjaan</span>
+            <span class="metric-pill"><span class="metric-dot"></span>${hasAnalysis ? `${mockupScore}% match terbaru` : "CV parsing"}</span>
+            <span class="metric-pill"><span class="metric-dot"></span>${hasAnalysis ? `${detectedSkills.length || 0} skill utama` : "NLP skill extraction"}</span>
+            <span class="metric-pill"><span class="metric-dot"></span>${hasAnalysis ? `${safeList(latestAnalysis.jobs).length} rekomendasi job` : "Rekomendasi pekerjaan"}</span>
           </div>
         </div>
 
-        <aside class="mockup-frame" aria-label="Mockup dashboard hasil JobFit">
+        <aside class="mockup-frame product-preview" aria-label="Preview dashboard hasil JobFit">
           <div class="mockup-top">
             <span class="window-dot"></span>
             <span class="window-dot"></span>
@@ -50,7 +56,17 @@ export function renderLanding() {
                 <p class="mockup-title">${escapeHtml(mockupTitle)}</p>
                 <p class="mockup-subtitle">${escapeHtml(mockupSubtitle)}</p>
               </div>
-              <div class="score-mini" data-count-to="${mockupScore}">0%</div>
+              <div class="score-mini" data-count-to="${mockupScore}" style="background: radial-gradient(circle at center, var(--score-hole) 55%, transparent 56%), conic-gradient(${scoreColor(mockupScore)} 0 ${mockupScore}%, var(--border) ${mockupScore}% 100%);">0%</div>
+            </div>
+            <div class="hero-result-strip">
+              <div>
+                <span>Top job</span>
+                <strong>${escapeHtml(mockupTitle)}</strong>
+              </div>
+              <div>
+                <span>Confidence</span>
+                <strong>${topJobMatch >= 75 ? "Tinggi" : topJobMatch >= 50 ? "Sedang" : "Perlu data"}</strong>
+              </div>
             </div>
             <div class="mockup-grid">
               <div class="mini-panel">
@@ -65,6 +81,12 @@ export function renderLanding() {
                   ${renderMiniChips(missingSkills, "Belum ada gap", "warning")}
                 </div>
               </div>
+            </div>
+            <div class="hero-action-preview">
+              <p class="mini-label">Action plan</p>
+              <ul>
+                ${executiveActions.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+              </ul>
             </div>
           </div>
         </aside>

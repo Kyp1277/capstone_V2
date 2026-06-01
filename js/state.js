@@ -1,12 +1,14 @@
 import { getInitialTheme, readStorage, writeStorage } from "./utils.js";
 
 // Bisa diganti lewat localStorage jika service analisis jalan di URL berbeda.
-const defaultApiBaseUrl = window.location.hostname.endsWith(".ngrok-free.dev")
-  ? window.location.origin
-  : "http://127.0.0.1:5000";
-export const API_BASE_URL = window.location.hostname.endsWith(".ngrok-free.dev")
-  ? defaultApiBaseUrl
-  : localStorage.getItem("jobfitApiBaseUrl") || defaultApiBaseUrl;
+export function getDefaultApiBaseUrl(locationLike = window.location) {
+  const hostname = locationLike.hostname;
+  const isLocalHost = ["localhost", "127.0.0.1", "::1"].includes(hostname);
+  return isLocalHost ? "http://127.0.0.1:5000" : locationLike.origin;
+}
+
+const defaultApiBaseUrl = getDefaultApiBaseUrl();
+export const API_BASE_URL = localStorage.getItem("jobfitApiBaseUrl") || defaultApiBaseUrl;
 const AUTH_USER_KEY = "jobfit-auth-user";
 const AUTH_TOKEN_KEY = "jobfit-auth-token";
 const PENDING_VERIFICATION_KEY = "jobfit-pending-verification";
@@ -46,10 +48,13 @@ export const state = {
 
   // State halaman upload.
   selectedFile: null,
+  selectedFileUrl: "",
   uploadStep: 1,
   analysisMode: "targeted",
   targetRole: "",
   isAnalyzing: false,
+  isLoadingHistory: false,
+  loadingStep: 0,
   error: "",
   accountSettings: {
     error: "",
@@ -67,8 +72,11 @@ export const state = {
     query: "",
     mode: "all",
     score: "all",
-    sort: "newest"
+    sort: "newest",
+    page: 1
   },
+  selectedJobId: "",
+  compareAnalysisIds: [],
   theme: getInitialTheme(),
   currentAnalysis: storedAnalyses[0] || null,
   analyses: storedAnalyses,
@@ -186,7 +194,8 @@ function normalizeAnalysis(analysis) {
     experienceMatch: Number(analysis?.experienceMatch || 0),
     missingSkills: Array.isArray(analysis?.missingSkills) ? analysis.missingSkills : [],
     improvements: Array.isArray(analysis?.improvements) ? analysis.improvements : [],
-    jobs: Array.isArray(analysis?.jobs) ? analysis.jobs : []
+    jobs: Array.isArray(analysis?.jobs) ? analysis.jobs : [],
+    warnings: Array.isArray(analysis?.warnings) ? analysis.warnings : []
   };
 }
 

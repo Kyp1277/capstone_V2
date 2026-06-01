@@ -1,5 +1,6 @@
 import { navigate, render } from "./router.js";
 import { API_BASE_URL, replaceAnalyses, saveAnalysis, state } from "./state.js";
+import { showToast } from "./utils.js";
 
 // Mengirim CV untuk dianalisis dan mengubah response menjadi data dashboard.
 export async function analyzeCv() {
@@ -13,9 +14,18 @@ export async function analyzeCv() {
   }
 
   state.isAnalyzing = true;
+  state.loadingStep = 1;
   state.error = "";
 
   render();
+  const loadingTimer = window.setInterval(() => {
+    if (!state.isAnalyzing) {
+      window.clearInterval(loadingTimer);
+      return;
+    }
+    state.loadingStep = Math.min(Number(state.loadingStep || 1) + 1, 4);
+    render();
+  }, 1100);
 
   try {
     // Request berisi file PDF, mode analisis, dan target role.
@@ -39,16 +49,27 @@ export async function analyzeCv() {
 
     const analysis = normalizeAnalysisResponse(payload);
     const savedAnalysis = saveAnalysis(analysis);
+    if (state.selectedFileUrl) {
+      URL.revokeObjectURL(state.selectedFileUrl);
+      state.selectedFileUrl = "";
+    }
     state.isAnalyzing = false;
+    state.loadingStep = 0;
     state.selectedFile = null;
     state.targetRole = "";
     state.uploadStep = 1;
+    state.selectedJobId = "";
+    window.clearInterval(loadingTimer);
+    showToast("Analisis CV selesai! Membuka dashboard...", "success");
     navigate(`/dashboard/${savedAnalysis.id}`);
   } catch (error) {
     state.isAnalyzing = false;
+    state.loadingStep = 0;
+    window.clearInterval(loadingTimer);
     state.error =
       error.message ||
       "Analisis gagal diproses. Coba beberapa saat lagi.";
+    showToast(state.error, "error");
     render();
   }
 }
@@ -109,7 +130,8 @@ function normalizeAnalysisResponse(payload) {
     experienceMatch: Number(payload.experienceMatch || 0),
     missingSkills: Array.isArray(payload.missingSkills) ? payload.missingSkills : [],
     improvements: Array.isArray(payload.improvements) ? payload.improvements : [],
-    jobs: Array.isArray(payload.jobs) ? payload.jobs : []
+    jobs: Array.isArray(payload.jobs) ? payload.jobs : [],
+    warnings: Array.isArray(payload.warnings) ? payload.warnings : []
   };
 }
 

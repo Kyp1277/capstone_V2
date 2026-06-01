@@ -11,9 +11,9 @@ if LOCAL_PACKAGES.exists():
 sys.path.insert(0, str(ROOT))
 
 import api
-from modules import database
+from modules import analysis_service, auth_service, database
 
-api.send_otp_email = lambda email, otp: (_ for _ in ()).throw(RuntimeError("test otp fallback"))
+auth_service.send_otp_email = lambda email, otp: (_ for _ in ()).throw(RuntimeError("test otp fallback"))
 
 
 class FakeUpload:
@@ -122,6 +122,15 @@ def test_auth_contract():
         logged_in = api.login({"email": email, "password": "secret123"})
         assert logged_in["token"]
         assert logged_in["user"]["email"] == email
+        with database.get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT token FROM sessions WHERE user_id = %s ORDER BY created_at DESC LIMIT 1",
+                    (logged_in["user"]["id"],),
+                )
+                stored_token = cursor.fetchone()[0]
+        assert stored_token != logged_in["token"]
+        assert stored_token == database.hash_session_token(logged_in["token"])
 
         try:
             api.login({"email": email, "password": "wrong123"})
@@ -248,7 +257,7 @@ def test_analysis_persistence_contract():
                 "_cvText": "Python FastAPI PostgreSQL synthetic CV text",
             }
 
-        monkeypatch.setattr(api, "analyze_cv_file", fake_analyze_cv_file)
+        monkeypatch.setattr(analysis_service, "analyze_cv_file", fake_analyze_cv_file)
         response = asyncio.run(
             api.create_analysis(FakeUpload(), "Backend Engineer", "targeted", f"Bearer {token}")
         )
@@ -298,7 +307,7 @@ def test_analysis_without_token_still_works():
                 "_cvText": "No token CV text",
             }
 
-        monkeypatch.setattr(api, "analyze_cv_file", fake_analyze_cv_file)
+        monkeypatch.setattr(analysis_service, "analyze_cv_file", fake_analyze_cv_file)
         response = asyncio.run(api.create_analysis(FakeUpload(), "Backend Engineer", "targeted", None))
         assert response["id"] == "analysis-no-token"
         assert "_cvText" not in response

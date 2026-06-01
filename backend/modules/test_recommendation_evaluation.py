@@ -17,6 +17,7 @@ CASES_PATH = ROOT / "evaluation" / "cases.json"
 sys.path.insert(0, str(ROOT))
 
 import api  # noqa: E402
+from modules import analysis_service, jobs_service  # noqa: E402
 
 
 EVAL_JOBS = [
@@ -129,15 +130,15 @@ def run_case(case):
 
 
 def test_recommendation_evaluation():
-    original_load_jobs_once = api.load_jobs_once
-    original_extract_text = api.extract_text_from_pdf
-    original_max_candidates = api.MAX_CANDIDATE_JOBS
+    original_load_jobs_once = jobs_service.load_jobs_once
+    original_extract_text = analysis_service.extract_text_from_pdf
+    original_max_candidates = analysis_service.MAX_CANDIDATE_JOBS
 
     try:
-        api.load_jobs_once = lambda: EVAL_JOBS
-        api.extract_text_from_pdf = fake_extract_text_from_pdf
-        api.PROCESSED_JOBS_CACHE = None
-        api.MAX_CANDIDATE_JOBS = len(EVAL_JOBS)
+        jobs_service.load_jobs_once = lambda: EVAL_JOBS
+        analysis_service.extract_text_from_pdf = fake_extract_text_from_pdf
+        jobs_service.PROCESSED_JOBS_CACHE = None
+        analysis_service.MAX_CANDIDATE_JOBS = len(EVAL_JOBS)
 
         cases = json.loads(CASES_PATH.read_text(encoding="utf-8"))
         results = [run_case(case) for case in cases]
@@ -145,10 +146,10 @@ def test_recommendation_evaluation():
         for item in results:
             print(f"OK {item['id']} -> {item['topJob']} ({item['score']}%)")
     finally:
-        api.load_jobs_once = original_load_jobs_once
-        api.extract_text_from_pdf = original_extract_text
-        api.MAX_CANDIDATE_JOBS = original_max_candidates
-        api.PROCESSED_JOBS_CACHE = None
+        jobs_service.load_jobs_once = original_load_jobs_once
+        analysis_service.extract_text_from_pdf = original_extract_text
+        analysis_service.MAX_CANDIDATE_JOBS = original_max_candidates
+        jobs_service.PROCESSED_JOBS_CACHE = None
 
 
 if __name__ == "__main__":

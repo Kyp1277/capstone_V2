@@ -8,8 +8,7 @@ import {
   setVerificationMessage,
   state
 } from "./state.js";
-
-const USERS_KEY = "jobfit-users";
+import { showToast } from "./utils.js";
 
 export async function registerUser({ name, email, password }) {
   const payload = validateCredentials({ name, email, password, requireName: true });
@@ -42,6 +41,7 @@ export async function loginUser({ email, password }) {
     const session = await requestAuth("/api/auth/login", payload);
     setAuthSession(session);
     await loadRemoteAnalyses();
+    showToast(`Selamat datang, ${session.user?.name || "User"}!`, "success");
     return { ok: true, user: state.auth.user };
   } catch (error) {
     if (String(error.message || "").includes("Email belum diverifikasi")) {
@@ -62,28 +62,7 @@ export async function loginUser({ email, password }) {
       }
     }
 
-    const legacyUser = findLegacyUser(payload.email, payload.password);
-    if (!legacyUser) {
-      return setAuthError(error.message);
-    }
-
-    try {
-      const session = await requestAuth("/api/auth/register", {
-        name: legacyUser.name,
-        email: payload.email,
-        password: payload.password
-      });
-      setPendingVerification({
-        email: session.email,
-        verificationId: session.verificationId,
-        expiresAt: session.expiresAt,
-        devOtp: session.devOtp || "",
-        otpSent: Boolean(session.otpSent)
-      });
-      return { ok: false, needsVerification: true };
-    } catch (syncError) {
-      return setAuthError(syncError.message);
-    }
+    return setAuthError(error.message);
   }
 }
 
@@ -107,6 +86,7 @@ export async function verifyOtp({ otp }) {
     clearPendingVerification();
     setAuthSession(session);
     await loadRemoteAnalyses();
+    showToast("Email berhasil diverifikasi!", "success");
     return { ok: true, user: state.auth.user };
   } catch (error) {
     return setVerificationError(error.message);
@@ -167,6 +147,7 @@ export async function logoutUser() {
 
   clearAuthSession();
   clearAccountSettingsMessage();
+  showToast("Anda telah keluar dari akun.", "info");
 }
 
 export async function updateAccountProfile({ name }) {
@@ -192,6 +173,7 @@ export async function updateAccountProfile({ name }) {
       user: payload.user,
       token: state.auth.token
     });
+    showToast("Profil akun berhasil diperbarui.", "success");
     return setAccountSettingsSuccess("Profil akun berhasil diperbarui.");
   } catch (error) {
     return setAccountSettingsError(error.message);
@@ -211,6 +193,7 @@ export async function changePassword({ currentPassword, newPassword, confirmPass
       throw new Error(getApiErrorMessage(payload));
     }
 
+    showToast("Password berhasil diganti.", "success");
     return setAccountSettingsSuccess("Password berhasil diganti.");
   } catch (error) {
     return setAccountSettingsError(error.message);
@@ -260,14 +243,19 @@ function apiFetch(path, options = {}) {
 }
 
 async function loadRemoteAnalyses() {
-  const response = await apiFetch("/api/analyses");
-  const payload = await response.json().catch(() => ({}));
+  state.isLoadingHistory = true;
+  try {
+    const response = await apiFetch("/api/analyses");
+    const payload = await response.json().catch(() => ({}));
 
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(payload));
+    if (!response.ok) {
+      throw new Error(getApiErrorMessage(payload));
+    }
+
+    replaceAnalyses(Array.isArray(payload.analyses) ? payload.analyses : []);
+  } finally {
+    state.isLoadingHistory = false;
   }
-
-  replaceAnalyses(Array.isArray(payload.analyses) ? payload.analyses : []);
 }
 
 function validateCredentials({ name, email, password, requireName }) {
@@ -321,23 +309,6 @@ function setAccountSettingsSuccess(message) {
     success: message
   };
   return { ok: true };
-}
-
-function findLegacyUser(email, password) {
-  return readUsers().find(
-    (item) => normalizeEmail(item.email) === normalizeEmail(email) && item.password === String(password || "")
-  );
-}
-
-function readUsers() {
-  try {
-    const rawUsers = window.localStorage.getItem(USERS_KEY);
-    const users = rawUsers ? JSON.parse(rawUsers) : [];
-    return Array.isArray(users) ? users : [];
-  } catch (error) {
-    window.localStorage.removeItem(USERS_KEY);
-    return [];
-  }
 }
 
 function normalizeEmail(email) {

@@ -22,7 +22,6 @@ JobFit adalah prototype aplikasi web untuk analisis CV berbasis AI. Frontend tet
 - `js/events.js`: event listener untuk theme, menu mobile, upload/dropzone, analisis CV, dan filter history.
 - `js/api.js`: integrasi analisis CV dan riwayat melalui endpoint `/api/analyses`.
 - `js/utils.js`: helper umum seperti format angka/file, escape HTML, theme, scroll anchor, dan animasi.
-- `app.js`: entrypoint legacy tipis yang hanya mengarah ke `js/main.js`.
 - `static-server.js`: server statis kecil untuk preview lokal.
 
 ## Menjalankan Preview
@@ -69,6 +68,29 @@ Jika backend dijalankan di alamat lain, set melalui browser console:
 localStorage.setItem("jobfitApiBaseUrl", "http://127.0.0.1:5000")
 ```
 
+## Hosting Aman
+
+Untuk hosting, gunakan `backend\.env.production.example` sebagai template. Set minimal:
+
+```text
+APP_ENV=production
+DATABASE_URL=postgresql://user:password@host:5432/jobfit
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_USER=noreply@example.com
+SMTP_PASSWORD=password_smtp
+SMTP_FROM=noreply@example.com
+SMTP_TLS=true
+```
+
+Jika frontend dan API berada pada domain yang sama lewat reverse proxy, `FRONTEND_ORIGINS` boleh kosong. Jika beda domain, isi whitelist origin frontend:
+
+```text
+FRONTEND_ORIGINS=https://jobfit.example.com,https://www.jobfit.example.com
+```
+
+Saat `APP_ENV=production`, backend menolak konfigurasi berbahaya seperti CORS wildcard, database kosong, atau SMTP OTP belum siap. OTP development (`devOtp`) tidak pernah dikirim pada production. Teks CV hasil ekstraksi tetap disimpan penuh di database sesuai kebutuhan riwayat/internal, tetapi tidak dikirim balik lewat response API.
+
 Jika menjalankan backend dengan Python manual:
 
 ```powershell
@@ -82,7 +104,7 @@ python api.py
 Jalankan dari root project:
 
 ```powershell
-python -m py_compile backend\api.py backend\modules\cv_loader.py backend\modules\cv_parser.py backend\modules\data_loader.py backend\modules\database.py backend\modules\env_loader.py backend\modules\matching.py backend\modules\nlp.py backend\modules\preprocess_jobs.py backend\modules\recomendation.py backend\modules\semantic.py backend\modules\test_work_experience.py backend\modules\test_api_contract.py backend\modules\test_database_contract.py
+python -m py_compile backend\api.py backend\routes\__init__.py backend\routes\auth.py backend\routes\analyses.py backend\routes\health.py backend\modules\analysis_service.py backend\modules\auth_service.py backend\modules\config.py backend\modules\cv_parser.py backend\modules\data_loader.py backend\modules\database.py backend\modules\env_loader.py backend\modules\jobs_service.py backend\modules\nlp.py backend\modules\rate_limit.py backend\modules\test_work_experience.py backend\modules\test_api_contract.py backend\modules\test_database_contract.py backend\modules\test_recommendation_evaluation.py
 ```
 
 Test ekstraksi pengalaman kerja:
@@ -101,6 +123,15 @@ Test kontrak akun, session, dan riwayat PostgreSQL:
 
 ```powershell
 python backend\modules\test_database_contract.py
+```
+
+Test OCR parser dan database skill:
+
+```powershell
+python backend\modules\test_cv_parser_ocr.py
+python backend\modules\test_nlp_soft_skills.py
+python backend\modules\test_security_hardening.py
+python backend\modules\test_frontend_hosting_contract.py
 ```
 
 Test evaluasi rekomendasi dengan CV synthetic/anonymized:

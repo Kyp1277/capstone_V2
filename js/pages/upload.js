@@ -10,6 +10,7 @@ export function renderUpload() {
   const currentStep = Math.min(Math.max(Number(state.uploadStep || 1), 1), 3);
 
   if (state.isAnalyzing) {
+    const activeStep = Math.min(Math.max(Number(state.loadingStep || 1), 1), 4);
     return shell(`
       <section class="analysis-loading-section" aria-live="polite" aria-busy="true">
         <div class="container analysis-loading-inner">
@@ -19,6 +20,7 @@ export function renderUpload() {
           <span class="analysis-loading-spinner" aria-hidden="true"></span>
           <h1>Menganalisis CV Anda</h1>
           <p>JobFit sedang membaca dokumen, mendeteksi skill, dan mencocokkan rekomendasi pekerjaan.</p>
+          ${renderLoadingSteps(activeStep)}
         </div>
       </section>
     `);
@@ -50,7 +52,7 @@ export function renderUpload() {
           AI sedang membaca dokumen, mendeteksi skill, dan mencocokkan CV dengan target pekerjaan.
         </div>
         <div class="alert alert-error ${state.error ? "visible" : ""}">
-          ${state.error}
+          ${renderUploadError(state.error)}
         </div>
 
         ${renderWizardActions(currentStep, canAnalyze, canContinueToReview)}
@@ -152,7 +154,10 @@ function renderCvStep({ fileSelected, isAutoMode }) {
             value="${escapeHtml(state.targetRole)}"
             placeholder="Contoh: Frontend Developer"
             data-action="target-input"
+            list="targetRoleSuggestions"
+            autocomplete="off"
           />
+          <datalist id="targetRoleSuggestions"></datalist>
           <span class="helper-text">Isi minimal 3 karakter agar tombol review aktif.</span>
         </div>
       ` : ""}
@@ -209,8 +214,83 @@ function renderReviewStep({ fileSelected, isAutoMode }) {
           <strong>${fileSize}</strong>
         </div>
       </div>
+
+      ${renderPreflightChecklist({ fileSelected, isAutoMode, target })}
+
+      ${fileSelected && state.selectedFileUrl ? `
+        <div class="pdf-preview-container">
+          <h3>Preview Berkas CV</h3>
+          <iframe class="pdf-preview-frame" src="${state.selectedFileUrl}" title="Preview CV PDF"></iframe>
+        </div>
+      ` : ""}
     </div>
   `;
+}
+
+function renderPreflightChecklist({ fileSelected, isAutoMode, target }) {
+  const checks = [
+    ["File PDF valid", fileSelected, fileSelected ? "Siap dianalisis" : "Pilih file PDF teks terlebih dahulu"],
+    ["Mode analisis", true, isAutoMode ? "Auto recommendation aktif" : "Targeted match aktif"],
+    ["Target pekerjaan", isAutoMode || target.length > 2, isAutoMode ? "Sistem memilih pekerjaan terbaik" : target || "Isi minimal 3 karakter"],
+    ["Estimasi proses", true, "Sekitar 5-15 detik tergantung ukuran CV"]
+  ];
+
+  return `
+    <div class="preflight-card">
+      <div class="preflight-heading">
+        <strong>Checklist sebelum analisis</strong>
+        <span>${checks.filter(([, done]) => done).length}/${checks.length} siap</span>
+      </div>
+      <div class="preflight-list">
+        ${checks
+          .map(([label, done, detail]) => `
+            <div class="preflight-item ${done ? "done" : ""}">
+              <span>${done ? "OK" : "!"}</span>
+              <div>
+                <strong>${escapeHtml(label)}</strong>
+                <small>${escapeHtml(detail)}</small>
+              </div>
+            </div>
+          `)
+          .join("")}
+      </div>
+    </div>
+  `;
+}
+
+function renderLoadingSteps(activeStep) {
+  const steps = [
+    "Membaca teks PDF",
+    "Mendeteksi skill dan pengalaman",
+    "Mencocokkan dataset lowongan",
+    "Menyusun dashboard rekomendasi"
+  ];
+
+  return `
+    <div class="loading-steps">
+      ${steps
+        .map((step, index) => {
+          const number = index + 1;
+          const stateClass = number < activeStep ? "done" : number === activeStep ? "active" : "";
+          return `<div class="loading-step ${stateClass}"><span>${number < activeStep ? "OK" : number}</span>${escapeHtml(step)}</div>`;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
+function renderUploadError(error) {
+  const message = String(error || "");
+  const lower = message.toLowerCase();
+
+  if (lower.includes("teks cv") || lower.includes("scan") || lower.includes("pdf tidak")) {
+    return `
+      <strong>PDF belum terbaca jelas.</strong>
+      <span>Gunakan CV PDF berbasis teks, bukan hasil scan gambar. Jika CV berasal dari foto, ubah dulu dengan OCR lalu upload ulang.</span>
+    `;
+  }
+
+  return escapeHtml(message);
 }
 
 function renderWizardActions(currentStep, canAnalyze, canContinueToReview) {
@@ -227,7 +307,7 @@ function renderWizardActions(currentStep, canAnalyze, canContinueToReview) {
     return `
       <div class="upload-actions">
         <button class="btn btn-secondary" type="button" data-action="prev-upload-step">Kembali</button>
-        <button class="btn btn-primary" type="button" ${canContinueToReview ? "" : "disabled"} data-action="next-upload-step">Review Analisis</button>
+        <button class="btn btn-primary" type="button" ${canContinueToReview ? "" : "disabled"} data-action="next-upload-step" data-upload-review-button>Review Analisis</button>
         ${state.error ? `<button class="btn btn-secondary" type="button" data-action="clear-error">Coba Lagi</button>` : ""}
       </div>
     `;

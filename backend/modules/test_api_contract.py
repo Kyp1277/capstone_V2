@@ -8,6 +8,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 import api
+from modules import analysis_service, database, jobs_service
 from fastapi import HTTPException
 
 
@@ -69,6 +70,20 @@ class FakeUpload:
         return self._content
 
 
+class ChunkedUpload:
+    filename = "large.pdf"
+
+    def __init__(self, chunks):
+        self.chunks = list(chunks)
+        self.reads = 0
+
+    async def read(self, _size=None):
+        self.reads += 1
+        if not self.chunks:
+            return b""
+        return self.chunks.pop(0)
+
+
 class MonkeyPatch:
     def __init__(self):
         self._items = []
@@ -108,9 +123,9 @@ def assert_fields(payload):
 def test_valid_cv_contract():
     patch = MonkeyPatch()
     try:
-        patch.set(api, "extract_text_from_pdf", lambda _path: SAMPLE_CV)
-        patch.set(api, "prepare_jobs_once", _sample_jobs)
-        patch.set(api, "semantic_similarity", lambda _left, _right: 0.75)
+        patch.set(analysis_service, "extract_text_from_pdf", lambda _path: SAMPLE_CV)
+        patch.set(jobs_service, "prepare_jobs_once", _sample_jobs)
+        patch.set(analysis_service, "semantic_similarity", lambda _left, _right, **_kwargs: 0.75)
 
         payload = api.analyze_cv_file("dummy.pdf", "Senior Backend Engineer", "targeted")
         assert_fields(payload)
@@ -119,6 +134,7 @@ def test_valid_cv_contract():
         assert payload["workExperiences"], "Expected work experience extraction"
         assert payload["totalExperienceYears"] > 0
         assert payload["experienceLevel"] in {"mid_level", "senior", "senior_manager"}
+        assert payload["skillConfidence"], "Expected per-skill confidence weights"
         assert payload["jobs"], "Expected recommended jobs"
 
         first_job = payload["jobs"][0]
@@ -131,8 +147,8 @@ def test_valid_cv_contract():
 def test_empty_pdf_contract():
     patch = MonkeyPatch()
     try:
-        patch.set(api, "extract_text_from_pdf", lambda _path: "")
-        patch.set(api, "prepare_jobs_once", _sample_jobs)
+        patch.set(analysis_service, "extract_text_from_pdf", lambda _path: "")
+        patch.set(jobs_service, "prepare_jobs_once", _sample_jobs)
 
         payload = api.analyze_cv_file("empty.pdf", "Backend Engineer", "targeted")
         assert_fields(payload)
@@ -184,7 +200,7 @@ def test_auto_mode_allows_empty_target_role():
                 "warnings": [],
             }
 
-        patch.set(api, "analyze_cv_file", fake_analyze)
+        patch.set(analysis_service, "analyze_cv_file", fake_analyze)
         payload = asyncio.run(api.create_analysis(FakeUpload(), "", "auto"))
 
         assert payload["analysisMode"] == "auto"
@@ -193,12 +209,50 @@ def test_auto_mode_allows_empty_target_role():
         patch.restore()
 
 
+def test_invalid_authorization_rejected_before_analysis():
+    patch = MonkeyPatch()
+    try:
+        patch.set(database, "get_user_by_token", lambda _token: None)
+
+        def fail_analyze(*_args, **_kwargs):
+            raise AssertionError("Analysis must not run for invalid Authorization")
+
+        patch.set(analysis_service, "analyze_cv_file", fail_analyze)
+        try:
+            asyncio.run(api.create_analysis(FakeUpload(), "Backend Engineer", "targeted", "Bearer invalid-token"))
+        except HTTPException as error:
+            assert error.status_code == 401
+        else:
+            raise AssertionError("Expected HTTPException for invalid Authorization")
+    finally:
+        patch.restore()
+
+
+def test_upload_size_limit_stops_streaming_before_full_read():
+    upload = ChunkedUpload([
+        b"a" * (api.MAX_UPLOAD_SIZE // 2),
+        b"b" * (api.MAX_UPLOAD_SIZE // 2),
+        b"c",
+        b"should-not-be-read",
+    ])
+
+    try:
+        asyncio.run(api.create_analysis(upload, "Backend Engineer", "targeted", None))
+    except HTTPException as error:
+        assert error.status_code == 413
+        assert upload.reads == 3
+    else:
+        raise AssertionError("Expected HTTPException for oversized upload")
+
+
 def run_all():
     tests = [
         test_valid_cv_contract,
         test_empty_pdf_contract,
         test_targeted_requires_target_role,
         test_auto_mode_allows_empty_target_role,
+        test_invalid_authorization_rejected_before_analysis,
+        test_upload_size_limit_stops_streaming_before_full_read,
     ]
 
     for test in tests:

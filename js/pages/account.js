@@ -32,11 +32,11 @@ export function renderAccount() {
           </article>
           <article class="card summary-item">
             <p class="summary-label">Total analisis</p>
-            <p class="summary-value" data-count-to="${state.history.length}">0</p>
+            <p class="summary-value" ${state.isLoadingHistory ? '' : `data-count-to="${state.history.length}"`}>${state.isLoadingHistory ? '<span class="skeleton" style="display:inline-block;width:36px;height:28px;"></span>' : '0'}</p>
           </article>
           <article class="card summary-item">
             <p class="summary-label">Rata-rata score</p>
-            <p class="summary-value" data-count-to="${avgScore}">0%</p>
+            <p class="summary-value" ${state.isLoadingHistory ? '' : `data-count-to="${avgScore}"`}>${state.isLoadingHistory ? '<span class="skeleton" style="display:inline-block;width:36px;height:28px;"></span>' : '0%'}</p>
           </article>
           <article class="card summary-item">
             <p class="summary-label">Status</p>
@@ -47,8 +47,19 @@ export function renderAccount() {
         <article class="card dashboard-card">
           <h3>Hasil analisis terakhir</h3>
           ${
-            latestAnalysis
+            state.isLoadingHistory
               ? `
+                <div class="account-latest" style="padding: 20px;">
+                  <div style="flex: 1;">
+                    <div class="skeleton-line short"></div>
+                    <div class="skeleton-line medium"></div>
+                    <div class="skeleton-line short"></div>
+                  </div>
+                  <div class="skeleton" style="width: 56px; height: 56px; border-radius: 999px; flex-shrink: 0;"></div>
+                </div>
+              `
+              : latestAnalysis
+                ? `
                 <div class="account-latest">
                   <div>
                     <p class="summary-label">${escapeHtml(latestAnalysis.date)}</p>

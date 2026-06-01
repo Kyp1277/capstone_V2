@@ -1,6 +1,0 @@
-pandas
-pdfplumber
-fastapi
-uvicorn[standard]
-python-multipart
-sentence-transformers

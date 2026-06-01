@@ -1,7 +1,8 @@
 import re
 from collections import Counter
+from datetime import datetime
 
-NLP_CACHE_VERSION = "work-experience-v1.2-skill-db-2026-05-21"
+NLP_CACHE_VERSION = "work-experience-v1.3-skill-db-expanded-domains-2026-05-30"
 
 # =========================================
 # MASTER SKILL DATABASE
@@ -65,6 +66,65 @@ SKILL_LIST = [
 "ui ux",
 
 # =====================================
+# DEVOPS, CLOUD & MODERN FRONTEND
+# =====================================
+"next.js",
+"nuxt",
+"svelte",
+"tailwind css",
+"graphql",
+"prisma",
+"redis",
+"supabase",
+"elasticsearch",
+"terraform",
+"ansible",
+"jenkins",
+"ci/cd",
+"github actions",
+"gitlab ci",
+"aws",
+"amazon web services",
+"google cloud",
+"gcp",
+"prometheus",
+"grafana",
+"devops",
+"nginx",
+"apache",
+
+# =====================================
+# PROJECT MANAGEMENT & AGILE
+# =====================================
+"agile",
+"scrum",
+"kanban",
+"jira",
+"confluence",
+"trello",
+"notion",
+"product management",
+"sprint planning",
+
+# =====================================
+# DATA & ANALYTICS (EXTENDED)
+# =====================================
+"r",
+"matlab",
+"spss",
+"sas",
+"airflow",
+"spark",
+"hadoop",
+"kafka",
+"dbt",
+"looker",
+"metabase",
+"google analytics",
+"seo",
+"sem",
+
+# =====================================
 # BUSINESS, FINANCE & ADMIN
 # =====================================
 "accounting",
@@ -88,11 +148,37 @@ SKILL_LIST = [
 "hr",
 "payroll",
 "programming",
+"sap",
+"oracle",
+"audit",
+"compliance",
+"risk management",
+"budgeting",
+"forecasting",
+"financial analysis",
+"procurement",
+"supply chain",
+"logistics",
+"logistik",
+"warehouse",
+"inventory",
+"content writing",
+"social media",
+"email marketing",
+"training",
+"performance management",
 "time management",
 "problem solving",
 "effective communication",
 "teamwork",
 "collaboration",
+"leadership",
+"communication",
+"interpersonal",
+"adaptability",
+"creativity",
+"critical thinking",
+"organizational",
 
 # =====================================
 # ENGINEERING & CONSTRUCTION
@@ -137,6 +223,17 @@ SKILL_LIST = [
 "technician",
 "production operator",
 "machine operator",
+"cooking",
+"memasak",
+"cook",
+"chef",
+"kitchen",
+"dapur",
+"culinary",
+"tata boga",
+"food safety",
+"hygiene",
+"food preparation",
 
 # =====================================
 # IT INFRASTRUCTURE & NETWORKING
@@ -273,7 +370,84 @@ SKILL_SYNONYMS = {
     "it helpdesk": "help desk",
     "helpdesk": "help desk",
     "tech support": "technical support",
+    "koki": "cook",
+    "juru masak": "cook",
+    "masak": "memasak",
+    "memasak makanan": "memasak",
+    "dapur": "kitchen",
+    "kuliner": "culinary",
+    "keamanan pangan": "food safety",
+    "kebersihan makanan": "hygiene",
+    "persiapan makanan": "food preparation",
+
+    # Modern Frontend
+    "nextjs": "next.js",
+    "next js": "next.js",
+    "nuxtjs": "nuxt",
+    "nuxt js": "nuxt",
+    "tailwind": "tailwind css",
+    "tailwindcss": "tailwind css",
+
+    # Cloud & DevOps
+    "amazon web service": "amazon web services",
+    "google cloud platform": "gcp",
+    "github action": "github actions",
+    "continuous integration": "ci/cd",
+    "continuous deployment": "ci/cd",
+    "continuous delivery": "ci/cd",
+    "ci cd": "ci/cd",
+
+    # Agile & PM
+    "agile methodology": "agile",
+    "scrum methodology": "scrum",
+    "manajemen produk": "product management",
+
+    # Data
+    "google data studio": "looker",
+    "data studio": "looker",
+    "apache kafka": "kafka",
+    "apache spark": "spark",
+    "apache airflow": "airflow",
+
+    # Business & Finance
+    "keuangan": "finance",
+    "anggaran": "budgeting",
+    "perencanaan keuangan": "forecasting",
+    "analisis keuangan": "financial analysis",
+    "manajemen risiko": "risk management",
+    "pengadaan": "procurement",
+    "rantai pasok": "supply chain",
+    "pergudangan": "warehouse",
+    "manajemen inventaris": "inventory",
+    "pemasaran digital": "digital marketing",
+    "penulisan konten": "content writing",
+    "media sosial": "social media",
+    "pelatihan": "training",
+    "manajemen kinerja": "performance management",
 }
+
+
+# =========================================
+# SOFT SKILLS vs TECHNICAL SKILLS
+# =========================================
+# Soft skills stay visible in extraction, but count less in weighted matching.
+SOFT_SKILLS = {
+    "time management",
+    "problem solving",
+    "effective communication",
+    "teamwork",
+    "collaboration",
+    "leadership",
+    "communication",
+    "interpersonal",
+    "adaptability",
+    "creativity",
+    "critical thinking",
+    "organizational",
+}
+
+TECHNICAL_SKILLS = {skill for skill in SKILL_LIST if skill not in SOFT_SKILLS}
+SOFT_SKILL_WEIGHT_MULTIPLIER = 0.2
 
 
 SKILL_CANONICALS = {skill: skill for skill in SKILL_LIST}
@@ -373,6 +547,44 @@ EDUCATION_DOMAIN_PATTERNS = {
         "hotel management",
         "pariwisata",
     ],
+    "culinary": [
+        "tata boga",
+        "kuliner",
+        "culinary",
+        "culinary arts",
+        "food technology",
+        "teknologi pangan",
+        "gizi",
+    ],
+    "healthcare": [
+        "kedokteran",
+        "keperawatan",
+        "nursing",
+        "farmasi",
+        "pharmacy",
+        "kesehatan masyarakat",
+        "public health",
+        "fisioterapi",
+        "physiotherapy",
+        "kebidanan",
+        "midwifery",
+    ],
+    "legal": [
+        "hukum",
+        "law",
+        "ilmu hukum",
+        "legal",
+        "notaris",
+    ],
+    "logistics": [
+        "logistik",
+        "logistics",
+        "supply chain",
+        "manajemen logistik",
+        "teknik industri",
+        "industrial engineering",
+        "transportasi",
+    ],
 }
 
 JOB_DOMAIN_KEYWORDS = {
@@ -452,6 +664,72 @@ JOB_DOMAIN_KEYWORDS = {
         "front office",
         "receptionist",
         "guest service",
+    ],
+    "culinary": [
+        "koki",
+        "cook",
+        "chef",
+        "kitchen",
+        "dapur",
+        "culinary",
+        "kuliner",
+        "memasak",
+        "masakan",
+        "restaurant",
+        "restoran",
+        "cafe",
+        "f&b",
+        "food",
+        "beverage",
+        "barista",
+        "pastry",
+        "bakery",
+    ],
+    "healthcare": [
+        "dokter",
+        "perawat",
+        "nurse",
+        "apoteker",
+        "pharmacist",
+        "farmasi",
+        "fisioterapi",
+        "bidan",
+        "klinik",
+        "clinic",
+        "rumah sakit",
+        "hospital",
+        "medis",
+        "medical",
+        "kesehatan",
+        "health",
+    ],
+    "legal": [
+        "lawyer",
+        "pengacara",
+        "legal",
+        "hukum",
+        "notaris",
+        "paralegal",
+        "compliance",
+        "litigasi",
+        "litigation",
+    ],
+    "logistics": [
+        "logistik",
+        "logistics",
+        "supply chain",
+        "warehouse",
+        "gudang",
+        "kurir",
+        "courier",
+        "ekspedisi",
+        "freight",
+        "shipping",
+        "procurement",
+        "pengadaan",
+        "inventory",
+        "distribusi",
+        "distribution",
     ],
 }
 
@@ -554,6 +832,12 @@ DESCRIPTION_LINE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+NON_WORK_ACTIVITY_PATTERN = re.compile(
+    r"(@|anggota\s+divisi|koordinator\s+mahasiswa|\bmahasiswa\b|\borganisasi\b|"
+    r"\bpanitia\b|\bvolunteer\b|\bbem\b|\bhima\b|\bukm\b)",
+    re.IGNORECASE,
+)
+
 # A year that appears as a version number (surrounded by commas/spaces, not as a range)
 # e.g. "Windows Server 2003, 2008, and 2012" — years with no "to"/"-" range
 VERSION_YEAR_ONLY_PATTERN = re.compile(
@@ -642,8 +926,8 @@ def _parse_duration_years(duration_text):
     text = duration_text.lower()
     text = re.sub(r"[\u2013\u2014–]", "-", text)
     
-    # Use 2026 as the active baseline year to prevent current-year drift failures
-    current_year = 2026
+    # Dynamically use current year — no manual update needed each year
+    current_year = datetime.now().year
 
     for pattern in DURATION_PATTERNS:
         match = re.search(pattern, text)
@@ -691,8 +975,6 @@ def _is_stop_header(line):
 def _is_education_line(line):
     """Return True if the line looks like an education entry (degree, university, etc.)."""
     return bool(EDUCATION_DEGREE_PATTERN.search(line))
-    """Return True if the line looks like an education entry (degree, university, etc.)."""
-    return bool(EDUCATION_DEGREE_PATTERN.search(line))
 
 
 def _is_skill_list_line(line):
@@ -718,6 +1000,10 @@ def _has_year_range(line):
 def _is_description_line(line):
     """Return True if line is a job description bullet (starts with action verb)."""
     return bool(DESCRIPTION_LINE_PATTERN.match(line.strip()))
+
+
+def _is_non_work_activity_line(line):
+    return bool(NON_WORK_ACTIVITY_PATTERN.search(line or ""))
 
 
 def extract_work_experience(text):
@@ -787,6 +1073,12 @@ def extract_work_experience(text):
         if _is_description_line(stripped):
             continue
 
+        if _is_non_work_activity_line(stripped):
+            continue
+
+        if re.match(r"^(19|20)\d{2}\s*(?:-|to)\s*(?:\d{4}|present|current|sekarang)\b", stripped, re.IGNORECASE):
+            continue
+
         # Must contain a proper year RANGE (year + to/- + year/present) on this line
         # OR the immediately following line must have a year range.
         # A bare year (e.g. "Windows Server 2003") does NOT qualify.
@@ -842,6 +1134,9 @@ def extract_work_experience(text):
 
         # Guard: position must not look like an education entry
         if _is_education_line(position) or _is_education_line(company):
+            continue
+
+        if _is_non_work_activity_line(position) or _is_non_work_activity_line(company):
             continue
 
         # Guard: position must not be a bare skill name or very short token list
@@ -928,7 +1223,7 @@ def clean_text(text):
 # =========================================
 # NLP SKILL EXTRACTION
 # =========================================
-def extract_skills(text):
+def extract_skills(text, include_soft_skills=True):
 
     if not text:
         return []
@@ -938,14 +1233,20 @@ def extract_skills(text):
     found_skills = set()
 
     for match in SKILL_ALIAS_PATTERN.finditer(cleaned_text):
-        found_skills.add(SKILL_LOOKUP[match.group(1)])
+        skill = SKILL_LOOKUP[match.group(1)]
+        if include_soft_skills or skill not in SOFT_SKILLS:
+            found_skills.add(skill)
 
     # =====================================
-    # 3. SORTING
+    # SORTING: technical skills first, then soft skills
     # =====================================
-    found_skills = sorted(list(found_skills))
+    technical = sorted(skill for skill in found_skills if skill not in SOFT_SKILLS)
+    soft = sorted(skill for skill in found_skills if skill in SOFT_SKILLS)
+    return technical + soft
 
-    return found_skills
+
+def extract_technical_skills(text):
+    return extract_skills(text, include_soft_skills=False)
 
 
 def extract_weighted_skills(text):
@@ -970,7 +1271,10 @@ def extract_weighted_skills(text):
     for skill, count in skill_counts.items():
         frequency_weight = 1.0 + min(1.2, (count - 1) * 0.35)
         context_weight = min(0.8, context_bonus[skill] * 0.25)
-        weighted_skills[skill] = round(min(MAX_SKILL_WEIGHT, frequency_weight + context_weight), 3)
+        raw_weight = round(min(MAX_SKILL_WEIGHT, frequency_weight + context_weight), 3)
+        if skill in SOFT_SKILLS:
+            raw_weight = round(raw_weight * SOFT_SKILL_WEIGHT_MULTIPLIER, 3)
+        weighted_skills[skill] = raw_weight
 
     return dict(sorted(weighted_skills.items(), key=lambda item: (-item[1], item[0])))
 
