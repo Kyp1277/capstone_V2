@@ -323,6 +323,7 @@ SKILL_SYNONYMS = {
     # Programming
     "js": "javascript",
     "pemrograman": "programming",
+    "coding": "programming",
     "pengolahan database": "database management",
     "basis data": "database",
     "manajemen waktu": "time management",
