@@ -1,3 +1,4 @@
+import "./tailwind.css";
 import { render } from "./router.js";
 import { state } from "./state.js";
 import { restoreSession } from "./auth.js";

@@ -33,7 +33,7 @@ export function applyTheme(theme) {
   document.documentElement.dataset.theme = theme;
 }
 
-export function syncAnchorScroll() {
+export function syncAnchorScroll(isSamePath = false) {
   // Link seperti #/#features perlu scroll manual setelah halaman landing dirender.
   const hash = window.location.hash;
   if (hash.includes("#features") || hash.includes("#workflow") || hash.includes("#settings")) {
@@ -41,7 +41,7 @@ export function syncAnchorScroll() {
     window.setTimeout(() => {
       document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 0);
-  } else {
+  } else if (!isSamePath) {
     window.scrollTo({ top: 0 });
   }
 }

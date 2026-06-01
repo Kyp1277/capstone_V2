@@ -1,5 +1,4 @@
 import {
-  API_BASE_URL,
   clearAuthSession,
   clearPendingVerification,
   replaceAnalyses,
@@ -8,6 +7,7 @@ import {
   setVerificationMessage,
   state
 } from "./state.js";
+import { apiErrorMessage, http } from "./http.js";
 import { showToast } from "./utils.js";
 
 export async function registerUser({ name, email, password }) {
@@ -27,7 +27,7 @@ export async function registerUser({ name, email, password }) {
     });
     return { ok: true, verification: state.verification.pending };
   } catch (error) {
-    return setAuthError(error.message);
+    return setAuthError(apiErrorMessage(error, "Registrasi gagal diproses."));
   }
 }
 
@@ -58,11 +58,11 @@ export async function loginUser({ email, password }) {
         });
         return { ok: false, needsVerification: true };
       } catch (resendError) {
-        return setAuthError(resendError.message);
+        return setAuthError(apiErrorMessage(resendError, "Kirim ulang OTP gagal diproses."));
       }
     }
 
-    return setAuthError(error.message);
+    return setAuthError(apiErrorMessage(error, "Login gagal diproses."));
   }
 }
 
@@ -89,7 +89,7 @@ export async function verifyOtp({ otp }) {
     showToast("Email berhasil diverifikasi!", "success");
     return { ok: true, user: state.auth.user };
   } catch (error) {
-    return setVerificationError(error.message);
+    return setVerificationError(apiErrorMessage(error, "Verifikasi OTP gagal diproses."));
   }
 }
 
@@ -112,7 +112,7 @@ export async function resendOtp() {
     });
     return { ok: true, verification: state.verification.pending };
   } catch (error) {
-    return setVerificationError(error.message);
+    return setVerificationError(apiErrorMessage(error, "Kirim ulang OTP gagal diproses."));
   }
 }
 
@@ -122,11 +122,7 @@ export async function restoreSession() {
   }
 
   try {
-    const response = await apiFetch("/api/auth/me");
-    const payload = await response.json();
-    if (!response.ok) {
-      throw new Error(getApiErrorMessage(payload));
-    }
+    const { data: payload } = await http.get("/api/auth/me");
 
     setAuthSession({
       user: payload.user,
@@ -136,7 +132,7 @@ export async function restoreSession() {
     return { ok: true, user: state.auth.user };
   } catch (error) {
     clearAuthSession();
-    return { ok: false, error: error.message };
+    return { ok: false, error: apiErrorMessage(error, "Sesi login gagal dipulihkan.") };
   }
 }
 
@@ -158,16 +154,7 @@ export async function updateAccountProfile({ name }) {
   }
 
   try {
-    const response = await apiFetch("/api/auth/me", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: normalizedName })
-    });
-    const payload = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-      throw new Error(getApiErrorMessage(payload));
-    }
+    const { data: payload } = await http.patch("/api/auth/me", { name: normalizedName });
 
     setAuthSession({
       user: payload.user,
@@ -176,27 +163,18 @@ export async function updateAccountProfile({ name }) {
     showToast("Profil akun berhasil diperbarui.", "success");
     return setAccountSettingsSuccess("Profil akun berhasil diperbarui.");
   } catch (error) {
-    return setAccountSettingsError(error.message);
+    return setAccountSettingsError(apiErrorMessage(error, "Profil gagal diperbarui."));
   }
 }
 
 export async function changePassword({ currentPassword, newPassword, confirmPassword }) {
   try {
-    const response = await apiFetch("/api/auth/change-password", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ currentPassword, newPassword, confirmPassword })
-    });
-    const payload = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-      throw new Error(getApiErrorMessage(payload));
-    }
+    await http.post("/api/auth/change-password", { currentPassword, newPassword, confirmPassword });
 
     showToast("Password berhasil diganti.", "success");
     return setAccountSettingsSuccess("Password berhasil diganti.");
   } catch (error) {
-    return setAccountSettingsError(error.message);
+    return setAccountSettingsError(apiErrorMessage(error, "Password gagal diganti."));
   }
 }
 
@@ -216,41 +194,18 @@ export function clearAccountSettingsMessage() {
 }
 
 async function requestAuth(path, payload) {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
-  const data = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(data));
-  }
-
+  const { data } = await http.post(path, payload);
   return data;
 }
 
 function apiFetch(path, options = {}) {
-  const headers = new Headers(options.headers || {});
-  if (state.auth.token) {
-    headers.set("Authorization", `Bearer ${state.auth.token}`);
-  }
-
-  return fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers
-  });
+  return http.request({ url: path, ...options });
 }
 
 async function loadRemoteAnalyses() {
   state.isLoadingHistory = true;
   try {
-    const response = await apiFetch("/api/analyses");
-    const payload = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-      throw new Error(getApiErrorMessage(payload));
-    }
+    const { data: payload } = await apiFetch("/api/analyses");
 
     replaceAnalyses(Array.isArray(payload.analyses) ? payload.analyses : []);
   } finally {
@@ -317,14 +272,4 @@ function normalizeEmail(email) {
 
 function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-}
-
-function getApiErrorMessage(payload) {
-  const detail = payload?.detail || payload?.error;
-
-  if (typeof detail === "string") {
-    return detail;
-  }
-
-  return "Layanan akun sedang bermasalah. Coba beberapa saat lagi.";
 }

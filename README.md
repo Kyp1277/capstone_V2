@@ -1,168 +1,45 @@
-# JobFit UI Prototype
+# JobFit - AI CV Match Analyzer
 
-JobFit adalah prototype aplikasi web untuk analisis CV berbasis AI. Frontend tetap statis dengan hash routing, sedangkan backend FastAPI terhubung ke PostgreSQL untuk dataset lowongan, akun, session, dan riwayat analisis.
+JobFit adalah aplikasi full-stack untuk menganalisis CV PDF, menghitung match score, menemukan missing skills, dan memberi rekomendasi pekerjaan berbasis AI. Stack utama proyek ini disesuaikan dengan checklist Dicoding: **Vite**, **Axios**, **Tailwind CSS**, **Express**, **RESTful API**, **PostgreSQL**, dan engine AI Python.
 
-## Halaman
+## Checklist Dicoding
 
-- Landing Page: hero, fitur utama, cara kerja, dan CTA.
-- Upload CV: drag and drop PDF, input target pekerjaan, state selected/loading/error.
-- Dashboard Hasil: match score, ringkasan AI, detected skills, missing skills, rekomendasi CV, rekomendasi pekerjaan.
-- Riwayat Analisis: daftar analisis yang tersimpan di database akun.
-- 404 Page: fallback route untuk halaman tidak ditemukan.
+- Module bundler: Vite melalui `npm run dev`, `npm run build`, dan `npm run preview`.
+- Networking calls: Axios client terpusat di `js/http.js`.
+- RESTful API: Express di `server.js` dengan endpoint `/api/auth/*`, `/api/analyses`, dan `/api/analyses/:id`.
+- Database: PostgreSQL untuk `jobs`, `users`, `sessions`, `email_otps`, dan `analyses`.
+- AI/ML: Python analysis engine memakai parser CV, OCR, Gemini parser fallback, dan semantic matching.
+- Responsive UI: layout responsif di `styles.css` plus Tailwind CSS build pipeline.
+- Deployment config: `render.yaml` untuk full-stack deploy dan Express bisa serve hasil `dist` pada production.
 
-## Struktur
+## Struktur Utama
 
-- `index.html`: entry point aplikasi.
-- `styles.css`: style guide, layout responsive, komponen UI.
-- `js/main.js`: bootstrap aplikasi, render awal, dan hashchange listener.
-- `js/state.js`: state global frontend, konfigurasi URL API, session, filter riwayat, dan cache analisis.
-- `js/router.js`: hash router dan pemilihan renderer halaman.
-- `js/layout.js`: shell halaman, navbar, footer, dan tombol theme.
-- `js/pages/`: renderer per halaman (`landing`, `upload`, `dashboard`, `history`, dan `not-found`).
-- `js/events.js`: event listener untuk theme, menu mobile, upload/dropzone, analisis CV, dan filter history.
-- `js/api.js`: integrasi analisis CV dan riwayat melalui endpoint `/api/analyses`.
-- `js/utils.js`: helper umum seperti format angka/file, escape HTML, theme, scroll anchor, dan animasi.
-- `static-server.js`: server statis kecil untuk preview lokal.
+- `index.html`: entry HTML Vite.
+- `js/main.js`: entry module frontend.
+- `js/http.js`: Axios instance dan normalisasi error API.
+- `js/pages/`: renderer halaman landing, upload, dashboard, riwayat, akun, dan auth.
+- `styles.css` dan `js/tailwind.css`: styling custom dan Tailwind pipeline.
+- `server.js`: Express REST API utama.
+- `backend/scripts/analyze_cli.py`: bridge Express ke engine AI Python.
+- `backend/modules/`: engine analisis CV, OCR, NLP, database helper lama, dan test kontrak.
+- `backend/database/schema.sql`: schema PostgreSQL.
+- `render.yaml`: contoh konfigurasi deployment full-stack.
 
-## Menjalankan Preview
+## Menjalankan Lokal
 
-Jalankan backend API terlebih dahulu:
-
-```powershell
-.\backend\run-api.ps1
-```
-
-Backend memakai FastAPI dan berjalan di:
-
-```text
-http://127.0.0.1:5000
-```
-
-Dokumentasi endpoint otomatis:
-
-```text
-http://127.0.0.1:5000/docs
-```
-
-Buka terminal kedua untuk frontend:
+Install dependency Node:
 
 ```powershell
-node static-server.js
+npm install
 ```
 
-Lalu buka:
-
-```text
-http://127.0.0.1:4173/
-```
-
-Frontend akan mengirim upload PDF ke:
-
-```text
-http://127.0.0.1:5000/api/analyses
-```
-
-Jika backend dijalankan di alamat lain, set melalui browser console:
-
-```js
-localStorage.setItem("jobfitApiBaseUrl", "http://127.0.0.1:5000")
-```
-
-## Hosting Aman
-
-Untuk hosting, gunakan `backend\.env.production.example` sebagai template. Set minimal:
-
-```text
-APP_ENV=production
-DATABASE_URL=postgresql://user:password@host:5432/jobfit
-SMTP_HOST=smtp.example.com
-SMTP_PORT=587
-SMTP_USER=noreply@example.com
-SMTP_PASSWORD=password_smtp
-SMTP_FROM=noreply@example.com
-SMTP_TLS=true
-```
-
-Jika frontend dan API berada pada domain yang sama lewat reverse proxy, `FRONTEND_ORIGINS` boleh kosong. Jika beda domain, isi whitelist origin frontend:
-
-```text
-FRONTEND_ORIGINS=https://jobfit.example.com,https://www.jobfit.example.com
-```
-
-Saat `APP_ENV=production`, backend menolak konfigurasi berbahaya seperti CORS wildcard, database kosong, atau SMTP OTP belum siap. OTP development (`devOtp`) tidak pernah dikirim pada production. Teks CV hasil ekstraksi tetap disimpan penuh di database sesuai kebutuhan riwayat/internal, tetapi tidak dikirim balik lewat response API.
-
-Jika menjalankan backend dengan Python manual:
-
-```powershell
-cd backend
-pip install -r requirements.txt
-python api.py
-```
-
-## Validasi Backend
-
-Jalankan dari root project:
-
-```powershell
-python -m py_compile backend\api.py backend\routes\__init__.py backend\routes\auth.py backend\routes\analyses.py backend\routes\health.py backend\modules\analysis_service.py backend\modules\auth_service.py backend\modules\config.py backend\modules\cv_parser.py backend\modules\data_loader.py backend\modules\database.py backend\modules\env_loader.py backend\modules\jobs_service.py backend\modules\nlp.py backend\modules\rate_limit.py backend\modules\test_work_experience.py backend\modules\test_api_contract.py backend\modules\test_database_contract.py backend\modules\test_recommendation_evaluation.py
-```
-
-Test ekstraksi pengalaman kerja:
-
-```powershell
-python backend\modules\test_work_experience.py
-```
-
-Test kontrak response API tanpa PDF eksternal:
-
-```powershell
-python backend\modules\test_api_contract.py
-```
-
-Test kontrak akun, session, dan riwayat PostgreSQL:
-
-```powershell
-python backend\modules\test_database_contract.py
-```
-
-Test OCR parser dan database skill:
-
-```powershell
-python backend\modules\test_cv_parser_ocr.py
-python backend\modules\test_nlp_soft_skills.py
-python backend\modules\test_security_hardening.py
-python backend\modules\test_frontend_hosting_contract.py
-```
-
-Test evaluasi rekomendasi dengan CV synthetic/anonymized:
-
-```powershell
-python backend\modules\test_recommendation_evaluation.py
-```
-
-## Dataset PostgreSQL
-
-Backend membaca dataset lowongan dari PostgreSQL dan memakai database yang sama untuk akun, session, serta riwayat analisis. Jika `DATABASE_URL` tidak diisi, dataset lowongan bisa fallback ke CSV, tetapi fitur akun dan riwayat database membutuhkan PostgreSQL.
-
-### Setup otomatis
-
-Jika PostgreSQL sudah terinstall lokal, jalankan:
-
-```powershell
-.\backend\scripts\setup-postgres.ps1
-```
-
-Script ini akan meminta password user `postgres`, membuat database `jobfit` jika belum ada, menulis `backend\.env`, import dataset jobs, dan mengecek jumlah data.
-
-### Setup manual
-
-1. Buat database PostgreSQL, lalu set koneksi:
+Siapkan PostgreSQL dan file environment:
 
 ```powershell
 Copy-Item backend\.env.example backend\.env
 ```
 
-Edit `backend\.env`, lalu ganti `password_kamu` dengan password PostgreSQL lokal:
+Isi minimal:
 
 ```text
 DATABASE_URL=postgresql://postgres:password_kamu@localhost:5432/jobfit
@@ -177,68 +54,81 @@ SMTP_USER=
 SMTP_PASSWORD=
 SMTP_FROM=
 SMTP_TLS=true
+GEMINI_API_KEY=
 ```
 
-2. Import dataset CSV yang sudah ada ke PostgreSQL:
+Import dataset jobs ke PostgreSQL:
 
 ```powershell
 cd backend
 python scripts/import_jobs_to_postgres.py
+cd ..
 ```
 
-Script import akan membuat tabel `jobs` jika belum ada, menambahkan index pencarian, lalu melakukan upsert dataset berdasarkan `fingerprint`. Kolom dataset yang dimuat:
+Jalankan API Express:
+
+```powershell
+npm run server
+```
+
+Jalankan frontend Vite di terminal kedua:
+
+```powershell
+npm run dev
+```
+
+Buka:
 
 ```text
-job_no, title, company, location, keyword, job_url, description, scraped_at, fingerprint
+http://127.0.0.1:4173/
 ```
 
-3. Cek koneksi dan jumlah data:
-
-```powershell
-python scripts/check_postgres_jobs.py
-```
-
-Output yang diharapkan:
+Frontend lokal otomatis mengirim request ke:
 
 ```text
-Koneksi PostgreSQL berhasil.
-Total jobs: 10785
+http://127.0.0.1:5000
 ```
 
-4. Jalankan API:
+Jika API berada di URL lain, set dari browser console:
+
+```js
+localStorage.setItem("jobfitApiBaseUrl", "https://api-jobfit.example.com")
+```
+
+## Build dan Production
+
+Build frontend:
 
 ```powershell
-python api.py
+npm run build
 ```
 
-Saat API start, schema `jobs`, `users`, `sessions`, `email_otps`, dan `analyses` dibuat/di-update otomatis dari `backend/database/schema.sql`. Endpoint `/health` akan menampilkan `jobsSource` dan jumlah data yang dibaca. Untuk memaksa dataset kembali ke CSV:
+Jalankan production-like server:
 
 ```powershell
-$env:JOBS_SOURCE="csv"
+$env:APP_ENV="production"
+$env:HOST="127.0.0.1"
+npm start
 ```
 
-Endpoint `/health` tetap tersedia untuk pengecekan teknis saat pengembangan.
+Pada production, Express akan melayani REST API dan file statis dari `dist`.
 
-### Mode demo stabil
+## Deployment
 
-Untuk presentasi tanpa upload ulang, buat akun demo dan satu riwayat analisis contoh:
+Opsi paling sederhana adalah single-service deploy ke Render/Railway:
 
-```powershell
-python backend\scripts\seed_demo_account.py
-```
+- Build command:
+  `npm install && npm run build && python -m pip install -r backend/requirements.txt -t .codex-python-packages`
+- Start command:
+  `npm start`
+- Environment minimal:
+  `APP_ENV=production`, `HOST=0.0.0.0`, `DATABASE_URL`, `SMTP_HOST`, `SMTP_FROM` atau `SMTP_USER`, `SMTP_PASSWORD` jika memakai `SMTP_USER`, dan `GEMINI_API_KEY` jika ingin parser Gemini aktif.
 
-Login demo:
-
-```text
-Email: demo@jobfit.local
-Password: demo1234
-```
-
-Akun demo tetap memakai tabel `users` dan `analyses`, sehingga dashboard dan riwayat membaca data dari database yang sama.
+Jika frontend dipisah ke Netlify/Vercel, deploy hasil `npm run build`, lalu arahkan `jobfitApiBaseUrl` ke URL Express API.
 
 ## Kontrak API
 
-Endpoint akun:
+Endpoint auth:
 
 ```text
 POST /api/auth/register
@@ -251,57 +141,61 @@ POST /api/auth/change-password
 POST /api/auth/logout
 ```
 
-`register` membuat akun belum terverifikasi dan mengirim OTP email. Response register berisi `verificationId`, `email`, `expiresAt`, dan `devOtp` hanya saat `APP_ENV=development`. Setelah `verify-otp` berhasil, backend mengembalikan `token` serta `user`. Frontend mengirim token melalui header:
+Endpoint analisis:
 
 ```text
-Authorization: Bearer <token>
+GET /api/analyses
+GET /api/analyses/titles?q=frontend
+GET /api/analyses/:id
+POST /api/analyses
 ```
 
-Halaman upload mengirim request ke backend:
+Upload CV:
 
 ```text
 POST /api/analyses
 Content-Type: multipart/form-data
 
 fields:
-- cv: File PDF
+- cv: File PDF maksimal 5 MB
 - targetRole: string
 - analysisMode: targeted | auto
 ```
 
-Jika token valid dikirim, hasil analisis otomatis disimpan ke tabel `analyses` bersama teks CV hasil ekstraksi. File PDF mentah tidak disimpan.
-Endpoint auth, OTP, dan upload memakai rate limit ringan in-memory untuk mengurangi spam saat demo.
+Jika request memakai token valid, hasil analisis disimpan ke tabel `analyses`. File PDF mentah tidak disimpan permanen.
 
-Response yang diharapkan untuk implementasi full-stack:
+## Validasi
 
-```json
-{
-  "id": "analysis-001",
-  "targetRole": "Frontend Developer",
-  "score": 82,
-  "detectedSkills": ["HTML", "CSS", "JavaScript", "React"],
-  "workExperiences": [],
-  "totalExperienceYears": 0,
-  "experienceLevel": "entry_level",
-  "experienceMatch": 0,
-  "missingSkills": ["TypeScript", "Unit Testing"],
-  "improvements": ["Tambahkan project React yang menggunakan API."],
-  "jobs": [
-    {
-      "title": "Frontend Developer",
-      "match": 88
-    }
-  ]
-}
+Build frontend:
+
+```powershell
+npm run build
 ```
 
-Response job recommendation juga menyertakan `matchedSkills`, `missingSkills`, `notFitReason`, `improvements`, dan `scoreBreakdown` untuk kebutuhan dashboard hasil analisis.
+Cek Express syntax:
 
-Endpoint riwayat:
-
-```text
-GET /api/analyses
-GET /api/analyses/{id}
+```powershell
+node --check server.js
 ```
 
-Keduanya membutuhkan token login dan hanya mengembalikan riwayat milik akun tersebut.
+Cek API:
+
+```powershell
+Invoke-WebRequest -UseBasicParsing http://127.0.0.1:5000/health
+```
+
+Jalankan test Python penting:
+
+```powershell
+python backend\modules\test_api_contract.py
+python backend\modules\test_database_contract.py
+python backend\modules\test_frontend_hosting_contract.py
+python backend\modules\test_security_hardening.py
+python backend\modules\test_recommendation_evaluation.py
+```
+
+## Catatan Keamanan
+
+- `backend/.env` berisi credential lokal dan sudah di-ignore oleh git.
+- Jangan commit `.env`, `node_modules`, `dist`, atau cache Python.
+- Rotate API key/SMTP password jika pernah terlihat di terminal, screenshot, atau repository publik.

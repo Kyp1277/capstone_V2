@@ -5,7 +5,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 LOCAL_PACKAGES = ROOT.parent / ".codex-python-packages"
 if LOCAL_PACKAGES.exists() and str(LOCAL_PACKAGES) not in sys.path:
-    sys.path.insert(0, str(LOCAL_PACKAGES))
+    sys.path.append(str(LOCAL_PACKAGES))
 
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))

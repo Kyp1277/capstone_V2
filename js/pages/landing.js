@@ -9,38 +9,30 @@ export function renderLanding() {
   const topJob = Array.isArray(latestAnalysis?.jobs) ? latestAnalysis.jobs[0] : null;
   const mockupTitle = hasAnalysis
     ? topJob?.title || latestAnalysis.targetRole || "Hasil analisis CV"
-    : "Belum ada analisis";
+    : "Frontend Developer";
   const mockupSubtitle = hasAnalysis
     ? `Hasil terbaru: ${latestAnalysis.targetRole || "Analisis CV"}`
-    : "Upload CV untuk menampilkan hasil riwayat asli";
-  const mockupScore = hasAnalysis ? Number(topJob?.match || latestAnalysis.score || 0) : 0;
-  const detectedSkills = hasAnalysis ? safeList(latestAnalysis.detectedSkills).slice(0, 3) : [];
-  const missingSkills = hasAnalysis ? safeList(latestAnalysis.missingSkills).slice(0, 2) : [];
-  const topJobMatch = Number(topJob?.match || latestAnalysis?.score || 0);
-  const executiveActions = hasAnalysis ? safeList(latestAnalysis.improvements).slice(0, 3) : [
-    "Upload CV PDF teks untuk membaca skill dan pengalaman.",
-    "Pilih target pekerjaan atau gunakan mode otomatis.",
-    "Buka dashboard untuk melihat score, gap, dan rekomendasi job."
-  ];
+    : "Hasil analisis AI berdasarkan CV dan target role";
+  const mockupScore = hasAnalysis ? Number(topJob?.match || latestAnalysis.score || 0) : 82;
+  const detectedSkills = hasAnalysis ? safeList(latestAnalysis.detectedSkills).slice(0, 3) : ["React", "REST API", "Git"];
+  const missingSkills = hasAnalysis ? safeList(latestAnalysis.missingSkills).slice(0, 2) : ["TypeScript", "Testing"];
+  const topJobMatch = Number(topJob?.match || latestAnalysis?.score || mockupScore);
 
   return shell(`
-    <section class="hero">
-      <div class="container hero-grid">
+    <section class="hero" style="position: relative; overflow: hidden;">
+      <div class="hero-mesh-sphere sphere-1" aria-hidden="true"></div>
+      <div class="hero-mesh-sphere sphere-2" aria-hidden="true"></div>
+      <div class="container hero-grid" style="position: relative; z-index: 2;">
         <div>
           <p class="eyebrow">AI Career Assistant</p>
-          <h1>Analisis CV Anda, Temukan Pekerjaan yang Paling Cocok</h1>
+          <h1 class="hero-title-gradient">Analisis CV Anda, Temukan Pekerjaan yang Paling Cocok</h1>
           <p class="hero-copy">
-            JobFit membaca CV PDF, mengenali skill dan pengalaman, menghitung match score,
+            JobFit membaca CV PDF melalui backend FastAPI, mengekstrak skill dengan NLP, menghitung match score,
             menemukan missing skills, dan menyusun rekomendasi pekerjaan yang relevan.
           </p>
           <div class="hero-actions">
             <a href="#/upload" class="btn btn-primary">Mulai Analisis CV</a>
-            <a href="${hasAnalysis ? `#/dashboard/${encodeURIComponent(latestAnalysis.id)}` : "#/#workflow"}" class="btn btn-secondary">Lihat Demo Hasil</a>
-          </div>
-          <div class="hero-metrics">
-            <span class="metric-pill"><span class="metric-dot"></span>${hasAnalysis ? `${mockupScore}% match terbaru` : "CV parsing"}</span>
-            <span class="metric-pill"><span class="metric-dot"></span>${hasAnalysis ? `${detectedSkills.length || 0} skill utama` : "NLP skill extraction"}</span>
-            <span class="metric-pill"><span class="metric-dot"></span>${hasAnalysis ? `${safeList(latestAnalysis.jobs).length} rekomendasi job` : "Rekomendasi pekerjaan"}</span>
+            <a href="#/#workflow" class="btn btn-secondary">Lihat Cara Kerja</a>
           </div>
         </div>
 
@@ -56,17 +48,7 @@ export function renderLanding() {
                 <p class="mockup-title">${escapeHtml(mockupTitle)}</p>
                 <p class="mockup-subtitle">${escapeHtml(mockupSubtitle)}</p>
               </div>
-              <div class="score-mini" data-count-to="${mockupScore}" style="background: radial-gradient(circle at center, var(--score-hole) 55%, transparent 56%), conic-gradient(${scoreColor(mockupScore)} 0 ${mockupScore}%, var(--border) ${mockupScore}% 100%);">0%</div>
-            </div>
-            <div class="hero-result-strip">
-              <div>
-                <span>Top job</span>
-                <strong>${escapeHtml(mockupTitle)}</strong>
-              </div>
-              <div>
-                <span>Confidence</span>
-                <strong>${topJobMatch >= 75 ? "Tinggi" : topJobMatch >= 50 ? "Sedang" : "Perlu data"}</strong>
-              </div>
+              <div class="score-mini" data-count-to="${mockupScore}" style="background: radial-gradient(circle at center, var(--score-hole) 55%, transparent 56%), conic-gradient(${scoreColor(mockupScore)} 0 ${mockupScore}%, var(--border) ${mockupScore}% 100%);">${mockupScore}%</div>
             </div>
             <div class="mockup-grid">
               <div class="mini-panel">
@@ -81,12 +63,6 @@ export function renderLanding() {
                   ${renderMiniChips(missingSkills, "Belum ada gap", "warning")}
                 </div>
               </div>
-            </div>
-            <div class="hero-action-preview">
-              <p class="mini-label">Action plan</p>
-              <ul>
-                ${executiveActions.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
-              </ul>
             </div>
           </div>
         </aside>

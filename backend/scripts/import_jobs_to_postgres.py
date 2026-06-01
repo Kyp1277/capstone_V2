@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PROJECT_ROOT = ROOT.parent
 LOCAL_PACKAGES = PROJECT_ROOT / ".codex-python-packages"
 if LOCAL_PACKAGES.exists():
-    sys.path.insert(0, str(LOCAL_PACKAGES))
+    sys.path.append(str(LOCAL_PACKAGES))
 sys.path.insert(0, str(ROOT))
 
 from modules.env_loader import load_env_file

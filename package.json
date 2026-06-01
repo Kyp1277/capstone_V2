@@ -1,0 +1,25 @@
+{
+  "name": "jobfit-dicoding-capstone",
+  "version": "1.0.0",
+  "description": "JobFit capstone app with Vite frontend, Axios networking, Tailwind CSS, Express API, PostgreSQL, and Python AI engine.",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 4173",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 4173",
+    "server": "node server.js",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "axios": "^1.7.9",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "multer": "^2.1.1",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.17",
+    "vite": "^6.0.7"
+  }
+}

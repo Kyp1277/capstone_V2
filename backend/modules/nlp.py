@@ -2,6 +2,12 @@ import re
 from collections import Counter
 from datetime import datetime
 
+try:
+    from rapidfuzz import fuzz as _rfuzz, process as _rprocess
+    _RAPIDFUZZ_AVAILABLE = True
+except ImportError:
+    _RAPIDFUZZ_AVAILABLE = False
+
 NLP_CACHE_VERSION = "work-experience-v1.3-skill-db-expanded-domains-2026-05-30"
 
 # =========================================
@@ -449,6 +455,8 @@ SOFT_SKILLS = {
 TECHNICAL_SKILLS = {skill for skill in SKILL_LIST if skill not in SOFT_SKILLS}
 SOFT_SKILL_WEIGHT_MULTIPLIER = 0.2
 
+FUZZY_MATCH_THRESHOLD = 82
+FUZZY_WEIGHT_PENALTY = 0.75
 
 SKILL_CANONICALS = {skill: skill for skill in SKILL_LIST}
 SKILL_CANONICALS.update(SKILL_SYNONYMS)
@@ -463,6 +471,93 @@ SKILL_ALIAS_PATTERN = re.compile(
     + "|".join(re.escape(alias.lower()) for alias in sorted(SKILL_CANONICALS, key=len, reverse=True))
     + r")(?![a-zA-Z0-9\+\#\.])"
 )
+
+# =========================================
+# FUZZY MATCHING TARGETS
+# =========================================
+# Pre-computed list of all canonical skill names plus their aliases.
+# Used as the search space for fuzzy matching unrecognised tokens.
+_FUZZY_SKILL_TARGETS = sorted(set(SKILL_CANONICALS.keys()), key=len, reverse=True)
+
+# Minimum token length for fuzzy matching — short tokens produce too many
+# false positives (e.g. "r" matching "hr").
+_FUZZY_MIN_TOKEN_LENGTH = 4
+
+
+def _levenshtein_distance(s1, s2):
+    if len(s1) > len(s2):
+        s1, s2 = s2, s1
+
+    distances = range(len(s1) + 1)
+    for i2, c2 in enumerate(s2):
+        distances_ = [i2+1]
+        for i1, c1 in enumerate(s1):
+            if c1 == c2:
+                distances_.append(distances[i1])
+            else:
+                distances_.append(1 + min((distances[i1], distances[i1 + 1], distances_[-1])))
+        distances = distances_
+    return distances[-1]
+
+def _pure_python_fuzz_ratio(s1, s2):
+    if not s1 or not s2:
+        return 0.0
+    if s1 == s2:
+        return 100.0
+    dist = _levenshtein_distance(s1, s2)
+    return round(((len(s1) + len(s2) - dist) / (len(s1) + len(s2))) * 100, 1)
+
+def fuzzy_match_skill(token, threshold=None):
+    """Attempt to match a single token/phrase against the skill database using
+    fuzzy string similarity. Returns (canonical_skill, similarity_score) if a
+    match is found above the threshold, otherwise None.
+
+    Runs when the rapidfuzz library is available, with pure Python Levenshtein fallback.
+    """
+    if threshold is None:
+        threshold = FUZZY_MATCH_THRESHOLD
+
+    token = token.strip().lower()
+    if len(token) < _FUZZY_MIN_TOKEN_LENGTH:
+        return None
+
+    if _RAPIDFUZZ_AVAILABLE:
+        # Use rapidfuzz process.extractOne for speed — it's implemented in C++
+        result = _rprocess.extractOne(
+            token,
+            _FUZZY_SKILL_TARGETS,
+            scorer=_rfuzz.ratio,
+            score_cutoff=threshold,
+        )
+
+        if result is None:
+            return None
+
+        matched_alias, score, _ = result
+        canonical = SKILL_LOOKUP.get(matched_alias, matched_alias)
+        return (canonical, round(score, 1))
+    else:
+        # Pure Python Levenshtein fallback
+        best_match = None
+        best_score = -1
+
+        for target in _FUZZY_SKILL_TARGETS:
+            # Quick length filter to optimize speed
+            len_diff = abs(len(token) - len(target))
+            max_possible_ratio = ((len(token) + len(target) - len_diff) / (len(token) + len(target))) * 100
+            if max_possible_ratio < threshold:
+                continue
+
+            score = _pure_python_fuzz_ratio(token, target)
+            if score >= threshold and score > best_score:
+                best_score = score
+                best_match = target
+
+        if best_match is None:
+            return None
+
+        canonical = SKILL_LOOKUP.get(best_match, best_match)
+        return (canonical, round(best_score, 1))
 
 CONTEXT_KEYWORDS = {
     "project",
@@ -919,9 +1014,9 @@ def _normalize_duration(duration_text):
     return text
 
 
-def _parse_duration_years(duration_text):
+def _parse_duration_interval(duration_text):
     if not duration_text or not isinstance(duration_text, str):
-        return 0
+        return None
 
     text = duration_text.lower()
     text = re.sub(r"[\u2013\u2014–]", "-", text)
@@ -955,8 +1050,15 @@ def _parse_duration_years(duration_text):
                 except ValueError:
                     end_year = current_year
 
-            return max(0, end_year - start_year)
+            return (start_year, end_year)
 
+    return None
+
+
+def _parse_duration_years(duration_text):
+    interval = _parse_duration_interval(duration_text)
+    if interval:
+        return max(0, interval[1] - interval[0])
     return 0
 
 
@@ -1164,12 +1266,27 @@ def calculate_total_experience_years(work_experiences):
     if not work_experiences or not isinstance(work_experiences, list):
         return 0
 
-    total_years = 0
+    intervals = []
     for item in work_experiences:
         duration = item.get("duration", "") if isinstance(item, dict) else ""
         if duration:
-            total_years += _parse_duration_years(duration)
+            interval = _parse_duration_interval(duration)
+            if interval:
+                intervals.append(interval)
 
+    if not intervals:
+        return 0
+
+    # Merge overlapping intervals
+    intervals.sort(key=lambda x: x[0])
+    merged = []
+    for interval in intervals:
+        if not merged or merged[-1][1] < interval[0]:
+            merged.append(interval)
+        else:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], interval[1]))
+
+    total_years = sum(end - start for start, end in merged)
     return total_years
 
 
@@ -1223,7 +1340,28 @@ def clean_text(text):
 # =========================================
 # NLP SKILL EXTRACTION
 # =========================================
-def extract_skills(text, include_soft_skills=True):
+def _extract_fuzzy_tokens(cleaned_text, already_matched):
+    """Extract candidate tokens from cleaned text for fuzzy matching.
+    Splits on whitespace and also tries bi-gram phrases (e.g. 'node js').
+    Only returns tokens that are NOT already matched by exact regex."""
+    words = cleaned_text.split()
+    candidates = set()
+
+    # Single word tokens
+    for word in words:
+        if len(word) >= _FUZZY_MIN_TOKEN_LENGTH and word not in already_matched:
+            candidates.add(word)
+
+    # Bi-gram phrases (for multi-word skills like 'node.js', 'data analysis')
+    for i in range(len(words) - 1):
+        bigram = f"{words[i]} {words[i+1]}"
+        if bigram not in already_matched:
+            candidates.add(bigram)
+
+    return candidates
+
+
+def extract_skills(text, include_soft_skills=True, fuzzy=True):
 
     if not text:
         return []
@@ -1231,11 +1369,30 @@ def extract_skills(text, include_soft_skills=True):
     cleaned_text = clean_text(text)
 
     found_skills = set()
+    match_types = {}  # skill -> "exact" | "fuzzy"
 
+    # ── Pass 1: Exact regex matching (original behaviour) ──
+    matched_spans = set()
     for match in SKILL_ALIAS_PATTERN.finditer(cleaned_text):
         skill = SKILL_LOOKUP[match.group(1)]
         if include_soft_skills or skill not in SOFT_SKILLS:
             found_skills.add(skill)
+            match_types[skill] = "exact"
+            matched_spans.add(match.group(1))
+
+    # ── Pass 2: Fuzzy matching for unrecognised tokens ──
+    if fuzzy:  # Runs always using rapidfuzz or Python Levenshtein fallback
+        candidates = _extract_fuzzy_tokens(cleaned_text, matched_spans)
+        for token in candidates:
+            if token in matched_spans:
+                continue
+            result = fuzzy_match_skill(token)
+            if result:
+                canonical, _score = result
+                if canonical not in found_skills:
+                    if include_soft_skills or canonical not in SOFT_SKILLS:
+                        found_skills.add(canonical)
+                        match_types[canonical] = "fuzzy"
 
     # =====================================
     # SORTING: technical skills first, then soft skills
@@ -1245,27 +1402,84 @@ def extract_skills(text, include_soft_skills=True):
     return technical + soft
 
 
+def extract_skills_with_types(text, include_soft_skills=True):
+    """Like extract_skills but also returns match type metadata.
+    Returns (skills_list, match_types_dict)."""
+    if not text:
+        return [], {}
+
+    cleaned_text = clean_text(text)
+
+    found_skills = set()
+    match_types = {}
+
+    matched_spans = set()
+    for match in SKILL_ALIAS_PATTERN.finditer(cleaned_text):
+        skill = SKILL_LOOKUP[match.group(1)]
+        if include_soft_skills or skill not in SOFT_SKILLS:
+            found_skills.add(skill)
+            match_types[skill] = "exact"
+            matched_spans.add(match.group(1))
+
+    if True:  # Runs always using rapidfuzz or Python Levenshtein fallback
+        candidates = _extract_fuzzy_tokens(cleaned_text, matched_spans)
+        for token in candidates:
+            if token in matched_spans:
+                continue
+            result = fuzzy_match_skill(token)
+            if result:
+                canonical, _score = result
+                if canonical not in found_skills:
+                    if include_soft_skills or canonical not in SOFT_SKILLS:
+                        found_skills.add(canonical)
+                        match_types[canonical] = "fuzzy"
+
+    technical = sorted(skill for skill in found_skills if skill not in SOFT_SKILLS)
+    soft = sorted(skill for skill in found_skills if skill in SOFT_SKILLS)
+    return technical + soft, match_types
+
+
 def extract_technical_skills(text):
     return extract_skills(text, include_soft_skills=False)
 
 
 def extract_weighted_skills(text):
+    """Extract skills with frequency + context weights.
+    Returns (weighted_skills_dict, match_types_dict)."""
     if not text:
-        return {}
+        return {}, {}
 
     cleaned_text = clean_text(text)
     skill_counts = Counter()
     context_bonus = Counter()
+    match_types = {}
 
+    # ── Pass 1: Exact regex matching ──
+    matched_spans = set()
     for match in SKILL_ALIAS_PATTERN.finditer(cleaned_text):
         canonical_skill = SKILL_LOOKUP[match.group(1)]
         skill_counts[canonical_skill] += 1
+        match_types[canonical_skill] = "exact"
+        matched_spans.add(match.group(1))
 
         left = max(0, match.start() - 80)
         right = min(len(cleaned_text), match.end() + 80)
         context = cleaned_text[left:right]
         if any(keyword in context for keyword in CONTEXT_KEYWORDS):
             context_bonus[canonical_skill] += 1
+
+    # ── Pass 2: Fuzzy matching for unrecognised tokens ──
+    if True:  # Runs always using rapidfuzz or Python Levenshtein fallback
+        candidates = _extract_fuzzy_tokens(cleaned_text, matched_spans)
+        for token in candidates:
+            if token in matched_spans:
+                continue
+            result = fuzzy_match_skill(token)
+            if result:
+                canonical, _score = result
+                if canonical not in skill_counts:
+                    skill_counts[canonical] = 1
+                    match_types[canonical] = "fuzzy"
 
     weighted_skills = {}
     for skill, count in skill_counts.items():
@@ -1274,9 +1488,13 @@ def extract_weighted_skills(text):
         raw_weight = round(min(MAX_SKILL_WEIGHT, frequency_weight + context_weight), 3)
         if skill in SOFT_SKILLS:
             raw_weight = round(raw_weight * SOFT_SKILL_WEIGHT_MULTIPLIER, 3)
+        # Apply fuzzy penalty — fuzzy matches get reduced confidence
+        if match_types.get(skill) == "fuzzy":
+            raw_weight = round(raw_weight * FUZZY_WEIGHT_PENALTY, 3)
         weighted_skills[skill] = raw_weight
 
-    return dict(sorted(weighted_skills.items(), key=lambda item: (-item[1], item[0])))
+    sorted_skills = dict(sorted(weighted_skills.items(), key=lambda item: (-item[1], item[0])))
+    return sorted_skills, match_types
 
 
 def extract_education_profile(text):
@@ -1332,6 +1550,113 @@ def analyze_job_description(job):
         "total_skills": len(skills),
         "skills": skills
     }
+
+
+# =========================================
+# GEMINI LLM RESUME PARSER
+# =========================================
+import json
+import logging
+import os
+
+logger = logging.getLogger(__name__)
+
+try:
+    from pydantic import BaseModel, Field
+    from typing import List, Optional
+
+    class WorkExperienceItem(BaseModel):
+        role: str = Field(description="Role or job title, e.g. 'Frontend Developer'")
+        years: float = Field(description="Duration in years, e.g. 2.5 or 1.0")
+        company: str = Field(description="Company name")
+        duration: str = Field(description="Duration string, e.g. 'Jan 2021 - Jun 2023'")
+
+    class EducationItem(BaseModel):
+        degree: str = Field(description="Degree, e.g. 'Bachelor', 'Master', 'Diploma' or 'High School'")
+        major: str = Field(description="Major or field of study, e.g. 'Computer Science'")
+        institution: str = Field(description="School or university name")
+
+    class GeminiResumeProfile(BaseModel):
+        skills: List[str] = Field(description="List of technical and soft skills extracted from the resume")
+        work_experiences: List[WorkExperienceItem] = Field(description="List of work experiences")
+        education: List[EducationItem] = Field(description="List of education history")
+        summary: str = Field(description="A short, professional summary of the candidate's profile")
+        improvements: List[str] = Field(description="3-4 specific action items, e.g. recommended online courses (from platforms like Dicoding/Coursera), technical portfolio projects to build, or precise CV phrasing corrections to close their skill gap for the target role.")
+
+    _PYDANTIC_AVAILABLE = True
+except ImportError:
+    _PYDANTIC_AVAILABLE = False
+
+
+def extract_profile_with_gemini(text, target_role=None):
+    """
+    Extract technical skills, experiences, and education profiles using Gemini API.
+    Also generates highly personalized roadmap improvements if target_role is provided.
+    Provides a seamless fallback to the local regex parser if GEMINI_API_KEY is not set.
+    """
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        logger.info("GEMINI_API_KEY is not configured. Falling back to local parser.")
+        return None
+
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=api_key)
+        
+        model = genai.GenerativeModel("gemini-2.5-flash")
+        
+        prompt = f"""
+        You are an expert ATS (Applicant Tracking System) parser and elite career coach. 
+        Extract the following information from the resume text:
+        - Skills (both technical and soft skills)
+        - Work Experience (roles, years of experience, companies, durations)
+        - Education Profile (degrees, majors, institutions)
+        - A brief professional summary (MUST be written in Indonesian language / Bahasa Indonesia)
+        """
+        
+        if target_role:
+            prompt += f"""
+            - 3-4 highly specific, personalized improvements and concrete roadmap steps for their target role: '{target_role}'. (MUST be written in Indonesian language / Bahasa Indonesia).
+            This should include recommended online courses (prioritizing Indonesian platform 'Dicoding' or global 'Coursera/Udemy'), specific projects to build, or exact CV phrasing changes to close the skill gap.
+            """
+        else:
+            prompt += """
+            - List 3 general CV improvements to make their resume stand out (MUST be written in Indonesian language / Bahasa Indonesia).
+            """
+            
+        prompt += f"""
+        IMPORTANT: All human-readable output text fields (specifically 'summary' and the items in 'improvements') MUST be written in fluent, professional Indonesian language (Bahasa Indonesia).
+        
+        Resume text:
+        {text}
+        """
+        
+        if _PYDANTIC_AVAILABLE:
+            response = model.generate_content(
+                prompt,
+                generation_config=genai.GenerationConfig(
+                    response_mime_type="application/json",
+                    response_schema=GeminiResumeProfile,
+                ),
+            )
+            result = json.loads(response.text)
+            logger.info("Successfully parsed resume using Gemini API.")
+            return result
+        else:
+            fallback_schema = "{'skills': [str], 'work_experiences': [{'role': str, 'years': float, 'company': str, 'duration': str}], 'education': [{'degree': str, 'major': str, 'institution': str}], 'summary': str, 'improvements': [str]}"
+            response = model.generate_content(
+                prompt + f"\nFormat the output strictly as a JSON object matching this schema: {fallback_schema}",
+                generation_config=genai.GenerationConfig(
+                    response_mime_type="application/json"
+                ),
+            )
+            result = json.loads(response.text)
+            logger.info("Successfully parsed resume using Gemini API (JSON fallback).")
+            return result
+            
+    except Exception as e:
+        logger.warning("Gemini parsing failed, falling back to local NLP parser: %s", str(e))
+        return None
 
 
 # =========================================

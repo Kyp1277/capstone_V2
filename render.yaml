@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: jobfit-capstone
+    env: node
+    plan: free
+    buildCommand: npm install && npm run build && python -m pip install -r backend/requirements.txt -t .codex-python-packages
+    startCommand: npm start
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: PYTHON_PATH
+        value: python
+      - key: DATABASE_URL
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: 587
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false

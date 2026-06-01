@@ -85,7 +85,7 @@ export function renderDashboard(params = {}) {
         <article class="card dashboard-card dashboard-skills-card">
           <h3>Skill yang Terdeteksi</h3>
           <p>Skill berikut terbaca dari CV Anda.</p>
-          ${renderChipList(data.detectedSkills, "Belum ada skill yang terbaca jelas dari CV. Pastikan PDF berisi teks, bukan scan gambar.")}
+          ${renderSkillChips(data)}
         </article>
 
         <article class="card dashboard-card dashboard-experience-card">
@@ -219,6 +219,43 @@ function renderChipList(items, emptyMessage, variant = "") {
   return `
     <div class="chip-row" style="margin-top: 16px;">
       ${items.map((item) => `<span class="chip ${variant}">${escapeHtml(item)}</span>`).join("")}
+    </div>
+  `;
+}
+
+function renderSkillChips(data) {
+  const skills = Array.isArray(data.detectedSkills) ? data.detectedSkills : [];
+  const confidence = data.skillConfidence || {};
+  const matchTypes = data.skillMatchTypes || {};
+
+  if (!skills.length) {
+    return `<div class="inline-empty">Belum ada skill yang terbaca jelas dari CV. Pastikan PDF berisi teks, bukan scan gambar.</div>`;
+  }
+
+  return `
+    <div class="chip-row" style="margin-top: 16px;">
+      ${skills.map((skill) => {
+        const weight = Number(confidence[skill] || 1.0);
+        const type = matchTypes[skill] || "exact";
+        const isFuzzy = type === "fuzzy";
+        const isStrong = !isFuzzy && weight >= 1.5;
+
+        let chipClass = "chip";
+        let badge = "";
+        let tooltip = "";
+
+        if (isFuzzy) {
+          chipClass += " confidence-fuzzy";
+          badge = `<span class="confidence-dot fuzzy">~</span>`;
+          tooltip = ` title="Terdeteksi dari variasi penulisan (fuzzy match)" aria-label="Fuzzy match"`;
+        } else if (isStrong) {
+          chipClass += " confidence-high";
+          badge = `<span class="confidence-dot strong">✓</span>`;
+          tooltip = ` title="Skill terdeteksi kuat dari CV" aria-label="Strong match"`;
+        }
+
+        return `<span class="${chipClass}"${tooltip}>${badge}${escapeHtml(skill)}</span>`;
+      }).join("")}
     </div>
   `;
 }
@@ -423,27 +460,39 @@ function jobCard(job, dashboardHref, index) {
       </div>
       <div class="job-meta" style="margin-top: 12px;">
         <span class="score-badge ${scoreLabelClass(job.match)}">${Number(job.match || 0)}% match</span>
-        <a href="${dashboardHref}" class="btn btn-ghost">Detail</a>
       </div>
       <div class="job-detail ${isSelected ? "open" : ""}">
         <div class="job-explanation">
           <strong>Kenapa cocok?</strong>
           <p>${escapeHtml(job.detail || "Belum ada alasan kecocokan untuk pekerjaan ini.")}</p>
         </div>
-        ${
-          matchedSkills.length
-            ? `<div class="job-skill-row">${matchedSkills.map((skill) => `<span class="mini-chip match">${escapeHtml(skill)}</span>`).join("")}</div>`
-            : ""
-        }
         <div class="job-explanation">
           <strong>Yang perlu ditingkatkan</strong>
           <p>${escapeHtml(job.notFitReason || "Tambahkan detail pengalaman yang lebih spesifik agar analisis lebih akurat.")}</p>
         </div>
-        ${
-          missingSkills.length
-            ? `<div class="job-skill-row">${missingSkills.map((skill) => `<span class="mini-chip gap">${escapeHtml(skill)}</span>`).join("")}</div>`
-            : ""
-        }
+        
+        <div class="skill-gap-visualizer">
+          <div class="visualizer-column matched-skills-col">
+            <strong class="visualizer-label matched">
+              <svg class="visualizer-svg-icon" viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;margin-right:6px;"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              Skill Anda yang Relevan (${matchedSkills.length})
+            </strong>
+            <div class="mini-chips-container">
+              ${matchedSkills.map(skill => `<span class="mini-chip match">${escapeHtml(skill)}</span>`).join("")}
+              ${matchedSkills.length === 0 ? `<span class="mini-chip-empty">Tidak ada skill yang terdeteksi cocok.</span>` : ""}
+            </div>
+          </div>
+          <div class="visualizer-column missing-skills-col">
+            <strong class="visualizer-label missing">
+              <svg class="visualizer-svg-icon" viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;margin-right:6px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+              Skill yang Dibutuhkan (${missingSkills.length})
+            </strong>
+            <div class="mini-chips-container">
+              ${missingSkills.map(skill => `<span class="mini-chip gap">${escapeHtml(skill)}</span>`).join("")}
+              ${missingSkills.length === 0 ? `<span class="mini-chip-empty strong">Semua skill utama terpenuhi!</span>` : ""}
+            </div>
+          </div>
+        </div>
         ${renderJobActionPlan(job)}
         ${renderScoreBreakdown(breakdown)}
       </div>

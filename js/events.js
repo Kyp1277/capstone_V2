@@ -12,7 +12,8 @@ import {
 } from "./auth.js";
 import { analyzeCv } from "./api.js";
 import { navigate, render } from "./router.js";
-import { API_BASE_URL, findAnalysisById, state } from "./state.js";
+import { findAnalysisById, state } from "./state.js";
+import { http } from "./http.js";
 import { applyTheme, debounce, escapeHtml } from "./utils.js";
 import { drawRadarChart } from "./pages/dashboard.js";
 
@@ -30,13 +31,12 @@ const debouncedFetchSuggestions = debounce(async (query) => {
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}/api/analyses/titles?q=${encodeURIComponent(query)}`);
-    if (response.ok) {
-      const data = await response.json();
-      datalist.innerHTML = (data.titles || [])
-        .map((title) => `<option value="${escapeHtml(title)}"></option>`)
-        .join("");
-    }
+    const { data } = await http.get("/api/analyses/titles", {
+      params: { q: query }
+    });
+    datalist.innerHTML = (data.titles || [])
+      .map((title) => `<option value="${escapeHtml(title)}"></option>`)
+      .join("");
   } catch (err) {
     console.error("Gagal mengambil saran autocomplete target role", err);
   }

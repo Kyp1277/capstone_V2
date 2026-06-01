@@ -220,7 +220,13 @@ function renderReviewStep({ fileSelected, isAutoMode }) {
       ${fileSelected && state.selectedFileUrl ? `
         <div class="pdf-preview-container">
           <h3>Preview Berkas CV</h3>
-          <iframe class="pdf-preview-frame" src="${state.selectedFileUrl}" title="Preview CV PDF"></iframe>
+          <iframe class="pdf-preview-frame desktop-only" src="${state.selectedFileUrl}" title="Preview CV PDF"></iframe>
+          <div class="mobile-only-pdf-view">
+            <p class="helper-text" style="margin-bottom: 12px; font-size: 13px; line-height: 1.5; color: var(--muted);">Preview PDF langsung dinonaktifkan di layar mobile untuk kenyamanan Anda.</p>
+            <a href="${state.selectedFileUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;">
+              <span>👁️ Buka / Unduh Berkas CV</span>
+            </a>
+          </div>
         </div>
       ` : ""}
     </div>

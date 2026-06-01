@@ -42,6 +42,8 @@ export function currentPath() {
   return hash || "/";
 }
 
+let lastRenderedHash = "";
+
 export function render() {
   const route = resolveRoute(currentPath().split("#")[0]);
   const path = route.path;
@@ -63,11 +65,15 @@ export function render() {
 
   const renderer = routes[path] || renderNotFound;
 
+  const currentHash = window.location.hash;
+  const isSamePath = currentHash === lastRenderedHash;
+  lastRenderedHash = currentHash;
+
   // Renderer mengembalikan HTML string, lalu event dipasang ulang setelah DOM baru masuk.
   app.innerHTML = renderer(route.params);
   bindEvents();
   initAnimations();
-  syncAnchorScroll();
+  syncAnchorScroll(isSamePath);
   updatePageTitle(getPageTitle(path, route.params));
 }
 

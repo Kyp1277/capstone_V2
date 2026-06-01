@@ -1,5 +1,6 @@
 import { navigate, render } from "./router.js";
-import { API_BASE_URL, replaceAnalyses, saveAnalysis, state } from "./state.js";
+import { replaceAnalyses, saveAnalysis, state } from "./state.js";
+import { apiErrorMessage, http } from "./http.js";
 import { showToast } from "./utils.js";
 
 // Mengirim CV untuk dianalisis dan mengubah response menjadi data dashboard.
@@ -34,18 +35,7 @@ export async function analyzeCv() {
     formData.append("analysisMode", state.analysisMode);
     formData.append("targetRole", isAutoMode ? "Pekerjaan paling cocok dari CV" : state.targetRole.trim());
 
-    const response = await fetch(`${API_BASE_URL}/api/analyses`, {
-      method: "POST",
-      headers: authHeaders(),
-      body: formData
-    });
-
-    const payload = await response.json().catch(() => ({}));
-
-    // Response non-2xx tetap dibaca agar pesan validasi bisa tampil.
-    if (!response.ok) {
-      throw new Error(getApiErrorMessage(payload));
-    }
+    const { data: payload } = await http.post("/api/analyses", formData);
 
     const analysis = normalizeAnalysisResponse(payload);
     const savedAnalysis = saveAnalysis(analysis);
@@ -67,7 +57,7 @@ export async function analyzeCv() {
     state.loadingStep = 0;
     window.clearInterval(loadingTimer);
     state.error =
-      error.message ||
+      apiErrorMessage(error, "Analisis gagal diproses. Coba beberapa saat lagi.") ||
       "Analisis gagal diproses. Coba beberapa saat lagi.";
     showToast(state.error, "error");
     render();
@@ -79,14 +69,7 @@ export async function loadAnalyses() {
     return [];
   }
 
-  const response = await fetch(`${API_BASE_URL}/api/analyses`, {
-    headers: authHeaders()
-  });
-  const payload = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(payload));
-  }
+  const { data: payload } = await http.get("/api/analyses");
 
   return replaceAnalyses(Array.isArray(payload.analyses) ? payload.analyses : []);
 }
@@ -96,14 +79,7 @@ export async function loadAnalysisDetail(id) {
     return null;
   }
 
-  const response = await fetch(`${API_BASE_URL}/api/analyses/${encodeURIComponent(id)}`, {
-    headers: authHeaders()
-  });
-  const payload = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(payload));
-  }
+  const { data: payload } = await http.get(`/api/analyses/${encodeURIComponent(id)}`);
 
   return saveAnalysis(normalizeAnalysisResponse(payload));
 }
@@ -133,33 +109,4 @@ function normalizeAnalysisResponse(payload) {
     jobs: Array.isArray(payload.jobs) ? payload.jobs : [],
     warnings: Array.isArray(payload.warnings) ? payload.warnings : []
   };
-}
-
-function authHeaders() {
-  return state.auth.token ? { Authorization: `Bearer ${state.auth.token}` } : {};
-}
-
-function getApiErrorMessage(payload) {
-  // Service analisis bisa mengirim detail error sebagai string atau array validasi.
-  const detail = payload?.detail || payload?.error;
-
-  if (typeof detail === "string") {
-    return detail;
-  }
-
-  if (Array.isArray(detail)) {
-    return detail
-      .map((item) => {
-        if (typeof item === "string") {
-          return item;
-        }
-
-        const location = Array.isArray(item.loc) ? item.loc.filter((part) => part !== "body").join(".") : "";
-        const message = item.msg || "Validasi request gagal.";
-        return location ? `${location}: ${message}` : message;
-      })
-      .join(" ");
-  }
-
-  return "Analisis sedang bermasalah. Coba beberapa saat lagi.";
 }

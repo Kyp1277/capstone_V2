@@ -195,7 +195,9 @@ function normalizeAnalysis(analysis) {
     missingSkills: Array.isArray(analysis?.missingSkills) ? analysis.missingSkills : [],
     improvements: Array.isArray(analysis?.improvements) ? analysis.improvements : [],
     jobs: Array.isArray(analysis?.jobs) ? analysis.jobs : [],
-    warnings: Array.isArray(analysis?.warnings) ? analysis.warnings : []
+    warnings: Array.isArray(analysis?.warnings) ? analysis.warnings : [],
+    skillConfidence: analysis?.skillConfidence && typeof analysis.skillConfidence === "object" ? analysis.skillConfidence : {},
+    skillMatchTypes: analysis?.skillMatchTypes && typeof analysis.skillMatchTypes === "object" ? analysis.skillMatchTypes : {}
   };
 }
 

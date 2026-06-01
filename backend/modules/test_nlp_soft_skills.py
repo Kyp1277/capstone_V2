@@ -24,7 +24,7 @@ def test_extract_skills_can_exclude_soft_skills():
 
 
 def test_weighted_skills_downweight_soft_skills():
-    weights = extract_weighted_skills("Python Python teamwork teamwork")
+    weights, _match_types = extract_weighted_skills("Python Python teamwork teamwork")
 
     assert weights["python"] > weights["teamwork"]
     assert weights["teamwork"] < 1.0

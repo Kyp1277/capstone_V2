@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PROJECT_ROOT = ROOT.parent
 LOCAL_PACKAGES = PROJECT_ROOT / ".codex-python-packages"
 if LOCAL_PACKAGES.exists() and str(LOCAL_PACKAGES) not in sys.path:
-    sys.path.insert(0, str(LOCAL_PACKAGES))
+    sys.path.append(str(LOCAL_PACKAGES))
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 

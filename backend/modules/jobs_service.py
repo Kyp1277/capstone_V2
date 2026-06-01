@@ -24,6 +24,10 @@ STOPWORDS = {
     "bagi", "buat", "memiliki", "melakukan", "dapat", "perlu",
     "wajib", "minimal", "maksimal", "lebih", "sangat", "cukup", "baik",
     "mampu", "mau", "ingin", "saat", "ketika", "pernah", "sedang",
+    # Indonesian recruitment-specific words
+    "lulusan", "pria", "wanita", "melamar", "berpengalaman", "ditempatkan",
+    "penempatan", "keahlian", "kemampuan", "kandidat", "pelamar", "kriteria",
+    "persyaratan", "lowongan", "pekerjaan",
     # English common words
     "the", "and", "for", "with", "role", "position", "job", "staff",
     "junior", "senior", "that", "this", "are", "was", "were", "have",
@@ -91,7 +95,7 @@ def prepare_jobs_once():
             description = str(job.get("description", ""))
             keyword = str(job.get("keyword", ""))
             job_text = f"{title}. {description}"
-            job_skills = extract_skills(job_text)
+            job_skills = extract_skills(job_text, fuzzy=False)
             job_domains = infer_job_domains(f"{title}. {keyword}. {description[:1200]}")
 
             processed_jobs.append(

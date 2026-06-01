@@ -13,6 +13,7 @@ from modules.nlp import (
     extract_weighted_skills,
     extract_work_experience,
     get_experience_level_match,
+    extract_profile_with_gemini,
 )
 
 
@@ -554,10 +555,58 @@ def analyze_cv_file(pdf_path, target_role, analysis_mode="targeted"):
     jobs = jobs_service.prepare_jobs_once()
     cv_text = extract_text_from_pdf(pdf_path)
     cv_text_length = len(cv_text.strip())
-    cv_weighted_skills = extract_weighted_skills(cv_text)
-    education_profile = extract_education_profile(cv_text)
-    work_experiences = extract_work_experience(cv_text)
-    total_experience_years = calculate_total_experience_years(work_experiences)
+    # --- GEMINI API INTEGRATION & FALLBACK ---
+    gemini_profile = extract_profile_with_gemini(cv_text, target_role=target_role)
+    gemini_summary = ""
+    gemini_improvements = []
+    
+    if gemini_profile:
+        # Reconstruct skills
+        gemini_skills_text = ", ".join(gemini_profile.get("skills", []))
+        cv_weighted_skills, cv_match_types = extract_weighted_skills(gemini_skills_text)
+        
+        # Use local parsing if no skills found, otherwise keep Gemini skills
+        if not cv_weighted_skills:
+            cv_weighted_skills, cv_match_types = extract_weighted_skills(cv_text)
+            
+        # Reconstruct education
+        gemini_edu_list = gemini_profile.get("education", [])
+        if gemini_edu_list:
+            edu_text = " ".join([f"{e.get('degree','')} {e.get('major','')} {e.get('institution','')}" for e in gemini_edu_list])
+            education_profile = extract_education_profile(edu_text)
+        else:
+            education_profile = extract_education_profile(cv_text)
+            
+        # Reconstruct work experiences
+        gemini_exp_list = gemini_profile.get("work_experiences", [])
+        if gemini_exp_list:
+            work_experiences = []
+            for exp in gemini_exp_list:
+                role_name = exp.get("role", "")
+                from modules.nlp import _infer_work_level
+                work_level = _infer_work_level(role_name)
+                
+                work_experiences.append({
+                    "role": role_name,
+                    "company": exp.get("company", "Unknown"),
+                    "duration": exp.get("duration", ""),
+                    "years": exp.get("years", 1.0),
+                    "level": work_level
+                })
+        else:
+            work_experiences = extract_work_experience(cv_text)
+            
+        total_experience_years = calculate_total_experience_years(work_experiences)
+        gemini_summary = gemini_profile.get("summary", "")
+        gemini_improvements = gemini_profile.get("improvements", [])
+    else:
+        # Fallback to local parsing
+        cv_weighted_skills, cv_match_types = extract_weighted_skills(cv_text)
+        education_profile = extract_education_profile(cv_text)
+        work_experiences = extract_work_experience(cv_text)
+        total_experience_years = calculate_total_experience_years(work_experiences)
+    # ----------------------------------------
+
     cv_experience_level = (
         work_experiences[0].get("level", "entry_level") if work_experiences else "entry_level"
     )
@@ -583,6 +632,7 @@ def analyze_cv_file(pdf_path, target_role, analysis_mode="targeted"):
             "improvements": build_improvements([], [], None),
             "jobs": [],
             "warnings": ["PDF tidak menghasilkan teks yang cukup. Gunakan PDF teks, bukan scan gambar, atau tambahkan OCR."],
+            "skillMatchTypes": {},
             "_cvText": cv_text,
         }
 
@@ -669,7 +719,7 @@ def analyze_cv_file(pdf_path, target_role, analysis_mode="targeted"):
         "date": time.strftime("%d %B %Y"),
         "score": best_score,
         "verdict": get_match_level(best_score),
-        "summary": build_summary(target_role, detected_skills, missing_skills, best_score, education_profile, cv_weighted_skills),
+        "summary": gemini_summary if gemini_summary else build_summary(target_role, detected_skills, missing_skills, best_score, education_profile, cv_weighted_skills),
         "detectedSkills": detected_skills,
         # K11: Expose per-skill confidence weight for UI display
         "skillConfidence": {
@@ -681,8 +731,13 @@ def analyze_cv_file(pdf_path, target_role, analysis_mode="targeted"):
         "experienceLevel": cv_experience_level,
         "experienceMatch": experience_match_score,
         "missingSkills": missing_skills,
-        "improvements": build_improvements(detected_skills, missing_skills, cv_weighted_skills),
+        "improvements": gemini_improvements if gemini_improvements else build_improvements(detected_skills, missing_skills, cv_weighted_skills),
         "jobs": top_jobs,
         "warnings": [],
+        # P1: Expose per-skill match type ("exact" or "fuzzy") for UI display
+        "skillMatchTypes": {
+            skill: cv_match_types.get(skill, "exact")
+            for skill in detected_skills
+        },
         "_cvText": cv_text,
     }
