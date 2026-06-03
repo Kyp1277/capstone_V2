@@ -338,7 +338,9 @@ function bindAuthForms() {
         password: formData.get("password")
       });
 
-      if (result.ok) {
+      if (result.ok && result.user) {
+        navigate("/account");
+      } else if (result.ok) {
         navigate("/verify-otp");
       } else {
         render();

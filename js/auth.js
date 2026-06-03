@@ -18,6 +18,14 @@ export async function registerUser({ name, email, password }) {
 
   try {
     const session = await requestAuth("/api/auth/register", payload);
+    if (session.token && session.user) {
+      clearPendingVerification();
+      setAuthSession(session);
+      await loadRemoteAnalyses();
+      showToast(`Selamat datang, ${session.user?.name || "User"}!`, "success");
+      return { ok: true, user: state.auth.user };
+    }
+
     setPendingVerification({
       email: session.email,
       verificationId: session.verificationId,

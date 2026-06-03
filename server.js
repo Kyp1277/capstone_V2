@@ -17,6 +17,7 @@ const app = express();
 const port = Number(process.env.PORT || 5000);
 const host = process.env.HOST || "127.0.0.1";
 const isProduction = ["prod", "production"].includes(String(process.env.APP_ENV || "development").toLowerCase());
+const isOtpDisabled = ["1", "true", "yes"].includes(String(process.env.JOBFIT_DISABLE_OTP || "").toLowerCase());
 const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL;
 const upload = multer({
   dest: path.join(os.tmpdir(), "jobfit-uploads"),
@@ -57,6 +58,11 @@ app.post("/api/auth/register", async (request, response) => {
     const user = await createOrUpdateUnverifiedUser(data.name, data.email, data.password);
     if (!user) {
       return response.status(409).json({ detail: "Email sudah terdaftar. Silakan masuk dengan akun tersebut." });
+    }
+
+    if (isOtpDisabled) {
+      const verifiedUser = await verifyUserEmail(user.id);
+      return response.json(await authResponse(verifiedUser));
     }
 
     response.json(await issueRegisterOtp(user));
@@ -330,9 +336,11 @@ function validateProductionConfig() {
   const errors = [];
   if (!(process.env.DATABASE_URL || process.env.POSTGRES_URL)) errors.push("DATABASE_URL atau POSTGRES_URL wajib diisi.");
   if (csvEnv("FRONTEND_ORIGINS").includes("*")) errors.push("FRONTEND_ORIGINS tidak boleh berisi wildcard '*'.");
-  if (!(process.env.RESEND_API_KEY || process.env.SMTP_HOST)) errors.push("RESEND_API_KEY atau SMTP_HOST wajib diisi agar OTP production bisa dikirim.");
-  if (!(process.env.EMAIL_FROM || process.env.SMTP_FROM || process.env.SMTP_USER)) errors.push("EMAIL_FROM, SMTP_FROM, atau SMTP_USER wajib diisi untuk pengirim OTP.");
-  if (!process.env.RESEND_API_KEY && process.env.SMTP_USER && !process.env.SMTP_PASSWORD) errors.push("SMTP_PASSWORD wajib diisi jika SMTP_USER digunakan.");
+  if (!isOtpDisabled) {
+    if (!(process.env.RESEND_API_KEY || process.env.SMTP_HOST)) errors.push("RESEND_API_KEY atau SMTP_HOST wajib diisi agar OTP production bisa dikirim.");
+    if (!(process.env.EMAIL_FROM || process.env.SMTP_FROM || process.env.SMTP_USER)) errors.push("EMAIL_FROM, SMTP_FROM, atau SMTP_USER wajib diisi untuk pengirim OTP.");
+    if (!process.env.RESEND_API_KEY && process.env.SMTP_USER && !process.env.SMTP_PASSWORD) errors.push("SMTP_PASSWORD wajib diisi jika SMTP_USER digunakan.");
+  }
   if (errors.length) throw new Error(`Konfigurasi production belum aman. ${errors.join(" ")}`);
 }
 
@@ -413,6 +421,14 @@ async function createOrUpdateUnverifiedUser(name, email, password) {
         [name, normalizeEmail(email), passwordHash]
       );
   return publicUser(result.rows[0]);
+}
+
+async function verifyUserEmail(userId) {
+  const { rows } = await pool.query(
+    "UPDATE users SET email_verified = TRUE, updated_at = NOW() WHERE id = $1 RETURNING id, name, email, email_verified, created_at",
+    [userId]
+  );
+  return publicUser(rows[0]);
 }
 
 async function authenticateUser(email, password) {
