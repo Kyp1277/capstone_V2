@@ -1,0 +1,27 @@
+.git/
+.sixth/
+.codex-python-packages/
+.codex-*.log
+.vercel/
+node_modules/
+dist/
+__pycache__/
+**/__pycache__/
+*.pyc
+*.log
+
+backend/
+cv/
+genbi_preview/
+hf-timeout-patch-send/
+hf-timeout-patch-send.zip
+CV GENBI 2.pdf
+CV Rifky.pdf
+hasil genbi.pdf
+scratch_inspect_cv.py
+render.yaml
+Dockerfile
+DEPLOYMENT_GUIDE.md
+CODEX_RUNBOOK.md
+AI_ENGINEER_AUDIT.md
+analysis_results.md
