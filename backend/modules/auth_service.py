@@ -1,7 +1,10 @@
 from email.message import EmailMessage
+import json
 import logging
 import os
 import smtplib
+from urllib import request
+from urllib.error import HTTPError
 
 from fastapi import HTTPException
 
@@ -97,22 +100,33 @@ def smtp_settings():
     }
 
 
-def send_otp_email(email, otp):
-    settings = smtp_settings()
-    if not settings["host"] or not settings["from"]:
-        raise RuntimeError("SMTP belum dikonfigurasi.")
+def email_sender():
+    return os.environ.get("EMAIL_FROM", "").strip() or os.environ.get("SMTP_FROM", "").strip() or os.environ.get("SMTP_USER", "").strip()
 
+
+def resend_settings():
+    return {
+        "api_key": os.environ.get("RESEND_API_KEY", "").strip(),
+        "from": email_sender(),
+    }
+
+
+def build_otp_message(email, otp):
     message = EmailMessage()
     message["Subject"] = "Kode Verifikasi JobFit"
-    message["From"] = settings["from"]
+    message["From"] = email_sender()
     message["To"] = email
     message.set_content(
         "Kode verifikasi JobFit Anda adalah:\n\n"
         f"{otp}\n\n"
         "Kode ini berlaku selama 10 menit. Abaikan email ini jika Anda tidak membuat akun JobFit."
     )
-    message.add_alternative(
-        f"""\
+    message.add_alternative(build_otp_html(otp), subtype="html")
+    return message
+
+
+def build_otp_html(otp):
+    return f"""\
 <!doctype html>
 <html>
   <body style="margin:0;padding:0;background:#f5f7fb;font-family:Arial,sans-serif;color:#111827;">
@@ -148,9 +162,54 @@ def send_otp_email(email, otp):
     </table>
   </body>
 </html>
-""",
-        subtype="html",
+"""
+
+
+def send_otp_email_resend(email, otp):
+    settings = resend_settings()
+    if not settings["api_key"] or not settings["from"]:
+        raise RuntimeError("Resend belum dikonfigurasi.")
+
+    payload = {
+        "from": settings["from"],
+        "to": [email],
+        "subject": "Kode Verifikasi JobFit",
+        "text": (
+            "Kode verifikasi JobFit Anda adalah:\n\n"
+            f"{otp}\n\n"
+            "Kode ini berlaku selama 10 menit. Abaikan email ini jika Anda tidak membuat akun JobFit."
+        ),
+        "html": build_otp_html(otp),
+    }
+    data = json.dumps(payload).encode("utf-8")
+    http_request = request.Request(
+        "https://api.resend.com/emails",
+        data=data,
+        headers={
+            "Authorization": f"Bearer {settings['api_key']}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
     )
+    try:
+        with request.urlopen(http_request, timeout=15) as response:
+            if response.status >= 300:
+                raise RuntimeError(f"Resend gagal mengirim email: HTTP {response.status}")
+    except HTTPError as error:
+        body = error.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Resend gagal mengirim email: HTTP {error.code} {body}") from error
+
+
+def send_otp_email(email, otp):
+    if os.environ.get("RESEND_API_KEY", "").strip():
+        send_otp_email_resend(email, otp)
+        return
+
+    settings = smtp_settings()
+    if not settings["host"] or not settings["from"]:
+        raise RuntimeError("SMTP belum dikonfigurasi.")
+
+    message = build_otp_message(email, otp)
 
     with smtplib.SMTP(settings["host"], settings["port"], timeout=15) as smtp:
         if settings["tls"]:

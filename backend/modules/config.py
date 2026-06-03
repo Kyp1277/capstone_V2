@@ -63,15 +63,17 @@ def production_config_errors():
     if any(origin == "*" for origin in origins):
         errors.append("FRONTEND_ORIGINS tidak boleh berisi wildcard '*'.")
 
+    resend_api_key = os.environ.get("RESEND_API_KEY", "").strip()
+    email_from = os.environ.get("EMAIL_FROM", "").strip()
     smtp_host = os.environ.get("SMTP_HOST", "").strip()
     smtp_from = os.environ.get("SMTP_FROM", "").strip()
     smtp_user = os.environ.get("SMTP_USER", "").strip()
     smtp_password = os.environ.get("SMTP_PASSWORD", "")
-    if not smtp_host:
-        errors.append("SMTP_HOST wajib diisi agar OTP production bisa dikirim.")
-    if not (smtp_from or smtp_user):
-        errors.append("SMTP_FROM atau SMTP_USER wajib diisi untuk pengirim OTP.")
-    if smtp_user and not smtp_password:
+    if not (resend_api_key or smtp_host):
+        errors.append("RESEND_API_KEY atau SMTP_HOST wajib diisi agar OTP production bisa dikirim.")
+    if not (email_from or smtp_from or smtp_user):
+        errors.append("EMAIL_FROM, SMTP_FROM, atau SMTP_USER wajib diisi untuk pengirim OTP.")
+    if not resend_api_key and smtp_user and not smtp_password:
         errors.append("SMTP_PASSWORD wajib diisi jika SMTP_USER digunakan.")
 
     return errors

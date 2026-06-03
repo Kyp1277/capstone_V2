@@ -294,6 +294,7 @@ def verify_email_otp(verification_id, email, otp, purpose="register"):
     except ImportError as error:
         raise RuntimeError("Dependency PostgreSQL belum tersedia.") from error
 
+    normalized_email = normalize_email(email)
     with get_connection() as connection:
         with connection.cursor(row_factory=dict_row) as cursor:
             cursor.execute(
@@ -302,9 +303,26 @@ def verify_email_otp(verification_id, email, otp, purpose="register"):
                 FROM email_otps
                 WHERE id = %s AND email = %s AND purpose = %s
                 """,
-                (verification_id, normalize_email(email), purpose),
+                (verification_id, normalized_email, purpose),
             )
             row = cursor.fetchone()
+
+            if not row or row["consumed_at"] is not None:
+                cursor.execute(
+                    """
+                    SELECT id, user_id, email, otp_hash, expires_at, attempts, consumed_at
+                    FROM email_otps
+                    WHERE email = %s
+                      AND purpose = %s
+                      AND consumed_at IS NULL
+                      AND expires_at > NOW()
+                      AND attempts < %s
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                    """,
+                    (normalized_email, purpose, MAX_OTP_ATTEMPTS),
+                )
+                row = cursor.fetchone() or row
 
             if not row:
                 return {"ok": False, "reason": "not_found"}

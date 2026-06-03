@@ -30,7 +30,9 @@ Karena sistem JobFit menggunakan modul machine learning Python (`sentence-transf
    * `JOBS_TABLE` = `jobs`
    * `APP_ENV` = `production`
    * `GEMINI_API_KEY` = *(Kunci API Gemini Anda)*
-   * `SMTP_HOST` = *(Jika menggunakan OTP)*
+   * `RESEND_API_KEY` = *(Disarankan untuk Hugging Face Spaces karena SMTP 587/465 dapat diblokir)*
+   * `EMAIL_FROM` = `JobFit <onboarding@resend.dev>` *(atau domain email Anda yang sudah diverifikasi di Resend)*
+   * `SMTP_HOST` = *(Opsional fallback jika deploy di platform yang mendukung SMTP)*
    * ... dst.
 
 ---

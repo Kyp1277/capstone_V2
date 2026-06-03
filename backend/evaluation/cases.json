@@ -98,5 +98,161 @@
     "expectedSkills": ["sales", "marketing", "communication", "crm"],
     "expectedTopRoleKeywords": ["sales", "marketing", "business development", "account executive"],
     "forbiddenTopRoleKeywords": ["backend", "operator produksi", "accounting"]
+  },
+  {
+    "id": "admin_data_entry_not_data_analyst",
+    "name": "Admin data entry bukan data analyst",
+    "targetRole": "Administrative Staff",
+    "analysisMode": "auto",
+    "cvText": "Admin data entry dengan pengalaman menginput data pelanggan, filing dokumen, Microsoft Excel, scheduling, surat menyurat, arsip kantor, dan customer service.",
+    "expectedSkills": ["data entry", "excel", "customer service"],
+    "expectedTopRoleKeywords": ["admin", "administrative", "data entry", "office"],
+    "forbiddenTopRoleKeywords": ["data analyst", "backend", "frontend"]
+  },
+  {
+    "id": "koki_chef",
+    "name": "Koki restoran",
+    "targetRole": "Koki",
+    "analysisMode": "targeted",
+    "cvText": "Koki restoran dengan pengalaman memasak menu Indonesia, food preparation, menjaga hygiene dapur, food safety, kerja tim kitchen, dan menyiapkan bahan makanan harian.",
+    "expectedSkills": ["cook", "memasak", "kitchen", "food safety"],
+    "expectedTopRoleKeywords": ["koki", "cook", "chef", "kitchen", "culinary"],
+    "forbiddenTopRoleKeywords": ["frontend", "backend", "accounting", "data analyst"]
+  },
+  {
+    "id": "fullstack_web_project",
+    "name": "Fullstack web project",
+    "targetRole": "Fullstack Developer",
+    "analysisMode": "targeted",
+    "cvText": "Fullstack Developer fresh graduate dengan project aplikasi dashboard. Mengembangkan frontend React, HTML, CSS, JavaScript, backend Node.js REST API, database MySQL, Git, dan deploy sederhana. Project mencatat fitur login, CRUD, filter data, dan responsive layout.",
+    "expectedSkills": ["javascript", "react", "html", "css", "mysql", "git", "rest api"],
+    "expectedTopRoleKeywords": ["developer", "web", "frontend", "software"],
+    "forbiddenTopRoleKeywords": ["accounting", "sales", "koki"]
+  },
+  {
+    "id": "social_media_not_graphic_designer",
+    "name": "Social media marketing bukan graphic designer",
+    "targetRole": "Social Media Marketing",
+    "analysisMode": "targeted",
+    "cvText": "Social Media Marketing dengan pengalaman membuat content calendar, campaign Instagram, copywriting caption, engagement report, analytics sederhana, CRM, dan koordinasi dengan creative team. Tidak menggunakan Figma atau Adobe Illustrator sebagai skill utama.",
+    "expectedSkills": ["social media", "marketing", "copywriting", "crm"],
+    "expectedTopRoleKeywords": ["social media", "marketing", "campaign"],
+    "forbiddenTopRoleKeywords": ["graphic designer", "backend", "accounting"]
+  },
+  {
+    "id": "logistics_warehouse_not_operator",
+    "name": "Logistics warehouse bukan operator produksi",
+    "targetRole": "Logistics Staff",
+    "analysisMode": "targeted",
+    "cvText": "Logistics warehouse staff dengan pengalaman inventory gudang, stock opname, shipping document, delivery coordination, picking packing, Microsoft Excel, dan laporan operasional harian.",
+    "expectedSkills": ["inventory", "warehouse", "excel"],
+    "expectedTopRoleKeywords": ["logistics", "warehouse", "inventory"],
+    "forbiddenTopRoleKeywords": ["frontend", "backend", "accounting"]
+  },
+  {
+    "id": "freshgrad_senior_backend_guard",
+    "name": "Fresh graduate target senior backend",
+    "targetRole": "Senior Backend Engineer",
+    "analysisMode": "targeted",
+    "cvText": "Fresh graduate Teknik Informatika dengan project REST API menggunakan Python, FastAPI, PostgreSQL, Docker, Git, dan unit testing. Pernah membuat API analytics sederhana sebagai project kuliah, belum memiliki pengalaman kerja senior.",
+    "expectedSkills": ["python", "fastapi", "postgresql", "docker", "git", "rest api"],
+    "expectedTopRoleKeywords": ["backend", "python", "engineer"],
+    "forbiddenTopRoleKeywords": ["manager", "designer", "sales"]
+  },
+  {
+    "id": "unavailable_dokter_for_it_cv",
+    "name": "Target dokter tidak tersedia untuk CV IT",
+    "targetRole": "Dokter",
+    "analysisMode": "targeted",
+    "cvText": "Frontend Developer fresh graduate Sistem Informasi. Project membuat aplikasi web dashboard dengan JavaScript, React, HTML, CSS, REST API, Git, PHP, MySQL, dan responsive design.",
+    "expectedSkills": ["javascript", "react", "html", "css", "git"],
+    "expectNoJobs": true,
+    "expectedSuggestions": ["frontend", "web", "developer", "fullstack"]
+  },
+  {
+    "id": "unavailable_pemain_bola",
+    "name": "Target pemain bola tidak tersedia",
+    "targetRole": "Pemain Bola",
+    "analysisMode": "targeted",
+    "cvText": "Frontend Developer fresh graduate Sistem Informasi. Project kuliah membuat aplikasi web dashboard lowongan dengan JavaScript, React, HTML, CSS, REST API, Git, PHP, MySQL, dan responsive design. Pernah mengerjakan UI component dan testing sederhana.",
+    "expectedSkills": ["javascript", "react", "html", "css", "git"],
+    "expectNoJobs": true,
+    "expectedSuggestions": ["frontend", "web", "developer", "fullstack"]
+  },
+  {
+    "id": "data_ml_cv_target_chef_guard",
+    "name": "CV data machine learning tidak dipaksa ke chef",
+    "targetRole": "chef",
+    "analysisMode": "targeted",
+    "cvText": "Mahasiswa Sistem Informasi dengan minat data science dan machine learning. Berpengalaman mengolah data menggunakan Python, database, Excel, ERP Odoo, visualisasi data, preprocessing, klasifikasi, clustering, dan membuat project website e commerce serta sistem informasi. Pernah menjadi bendahara organisasi dan mengelola administrasi laporan. Salah satu project kampus adalah website resep masakan, tetapi pengalaman utama tetap berada di sistem informasi, data, dan administrasi organisasi.",
+    "expectedSkills": ["python", "database", "excel", "machine learning", "erp"],
+    "expectTargetAvailable": true,
+    "expectNoJobs": true,
+    "expectedSuggestions": ["data", "analyst", "entry", "account"]
+  },
+  {
+    "id": "it_cv_target_security_guard",
+    "name": "CV IT tidak dipaksa ke security",
+    "targetRole": "Security",
+    "analysisMode": "targeted",
+    "cvText": "Frontend Developer fresh graduate Sistem Informasi dengan project dashboard web menggunakan JavaScript, React, HTML, CSS, Git, REST API, dan database. Tidak punya pengalaman satpam atau keamanan lapangan.",
+    "expectedSkills": ["javascript", "react", "html", "css", "git"],
+    "expectNoJobs": true,
+    "expectedSuggestions": ["frontend", "web", "developer", "fullstack"]
+  },
+  {
+    "id": "it_cv_target_driver_guard",
+    "name": "CV IT tidak dipaksa ke driver",
+    "targetRole": "Driver",
+    "analysisMode": "targeted",
+    "cvText": "Backend Developer fresh graduate dengan project REST API memakai Python, FastAPI, PostgreSQL, Docker, Git, dan unit testing. Tidak memiliki pengalaman mengemudi profesional atau pengiriman.",
+    "expectedSkills": ["python", "fastapi", "postgresql", "docker", "git"],
+    "expectTargetAvailable": true,
+    "expectNoJobs": true,
+    "expectedSuggestions": ["backend", "developer", "engineer"]
+  },
+  {
+    "id": "admin_cv_not_data_analyst_strict",
+    "name": "Admin Excel bukan data analyst",
+    "targetRole": "Data Analyst",
+    "analysisMode": "targeted",
+    "cvText": "Administrative Staff dengan pengalaman menginput data pelanggan, filing dokumen, scheduling, Microsoft Excel, surat menyurat, customer service, dan operasional kantor. Belum menggunakan Python, SQL, statistik, atau dashboard analitik.",
+    "expectedSkills": ["data entry", "excel", "customer service"],
+    "expectTargetAvailable": true,
+    "expectNoJobs": true,
+    "expectedSuggestions": ["admin", "administrative", "data entry", "office"]
+  },
+  {
+    "id": "social_media_negative_designer_guard",
+    "name": "Social media bukan graphic designer bila tools desain negatif",
+    "targetRole": "Graphic Designer",
+    "analysisMode": "targeted",
+    "cvText": "Social Media Marketing dengan pengalaman content calendar, campaign Instagram, copywriting caption, engagement report, analytics sederhana, CRM, dan koordinasi creative team. Belum menggunakan Figma, Photoshop, atau Illustrator sebagai skill utama.",
+    "expectedSkills": ["social media", "marketing", "copywriting", "crm"],
+    "expectTargetAvailable": true,
+    "expectNoJobs": true,
+    "expectedSuggestions": ["social media", "marketing", "campaign"]
+  },
+  {
+    "id": "operator_logistics_target_software_guard",
+    "name": "Operator logistics tidak dipaksa ke software developer",
+    "targetRole": "Software Developer",
+    "analysisMode": "targeted",
+    "cvText": "Logistics warehouse staff dengan pengalaman inventory gudang, stock opname, shipping document, delivery coordination, picking packing, Microsoft Excel, dan laporan operasional harian. Belum menggunakan JavaScript, Python, REST API, database programming, atau Git untuk membuat software.",
+    "expectedSkills": ["inventory", "warehouse", "excel"],
+    "expectTargetAvailable": true,
+    "expectNoJobs": true,
+    "expectedSuggestions": ["logistics", "warehouse", "inventory"]
+  },
+  {
+    "id": "finance_admin_not_finance_when_negative",
+    "name": "Admin bukan finance bila finance disebut negatif",
+    "targetRole": "Finance Staff",
+    "analysisMode": "targeted",
+    "cvText": "Administrative Staff dengan pengalaman data entry, filing, scheduling, Microsoft Excel, customer service, dan surat menyurat kantor. Bukan finance staff dan belum membuat invoice, accounting, pajak, atau rekonsiliasi.",
+    "expectedSkills": ["data entry", "excel", "customer service"],
+    "expectTargetAvailable": true,
+    "expectNoJobs": true,
+    "expectedSuggestions": ["admin", "administrative", "data entry", "office"]
   }
 ]

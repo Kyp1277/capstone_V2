@@ -308,9 +308,9 @@ function validateProductionConfig() {
   const errors = [];
   if (!(process.env.DATABASE_URL || process.env.POSTGRES_URL)) errors.push("DATABASE_URL atau POSTGRES_URL wajib diisi.");
   if (csvEnv("FRONTEND_ORIGINS").includes("*")) errors.push("FRONTEND_ORIGINS tidak boleh berisi wildcard '*'.");
-  if (!process.env.SMTP_HOST) errors.push("SMTP_HOST wajib diisi agar OTP production bisa dikirim.");
-  if (!(process.env.SMTP_FROM || process.env.SMTP_USER)) errors.push("SMTP_FROM atau SMTP_USER wajib diisi untuk pengirim OTP.");
-  if (process.env.SMTP_USER && !process.env.SMTP_PASSWORD) errors.push("SMTP_PASSWORD wajib diisi jika SMTP_USER digunakan.");
+  if (!(process.env.RESEND_API_KEY || process.env.SMTP_HOST)) errors.push("RESEND_API_KEY atau SMTP_HOST wajib diisi agar OTP production bisa dikirim.");
+  if (!(process.env.EMAIL_FROM || process.env.SMTP_FROM || process.env.SMTP_USER)) errors.push("EMAIL_FROM, SMTP_FROM, atau SMTP_USER wajib diisi untuk pengirim OTP.");
+  if (!process.env.RESEND_API_KEY && process.env.SMTP_USER && !process.env.SMTP_PASSWORD) errors.push("SMTP_PASSWORD wajib diisi jika SMTP_USER digunakan.");
   if (errors.length) throw new Error(`Konfigurasi production belum aman. ${errors.join(" ")}`);
 }
 
@@ -477,11 +477,27 @@ async function verifyEmailOtp(verificationId, email, otp, purpose = "register") 
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    const normalizedEmail = normalizeEmail(email);
     const { rows } = await client.query(
       "SELECT id, user_id, email, otp_hash, expires_at, attempts, consumed_at FROM email_otps WHERE id = $1 AND email = $2 AND purpose = $3",
-      [verificationId, normalizeEmail(email), purpose]
+      [verificationId, normalizedEmail, purpose]
     );
-    const row = rows[0];
+    let row = rows[0];
+    if (!row || row.consumed_at) {
+      const latest = await client.query(
+        `SELECT id, user_id, email, otp_hash, expires_at, attempts, consumed_at
+         FROM email_otps
+         WHERE email = $1
+           AND purpose = $2
+           AND consumed_at IS NULL
+           AND expires_at > NOW()
+           AND attempts < $3
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [normalizedEmail, purpose, Number(process.env.MAX_OTP_ATTEMPTS || 5)]
+      );
+      row = latest.rows[0] || row;
+    }
     if (!row) return { ok: false, reason: "not_found" };
     if (row.consumed_at) return { ok: false, reason: "consumed" };
     if (new Date(row.expires_at) <= new Date()) return { ok: false, reason: "expired" };
@@ -646,13 +662,24 @@ function runPythonAnalysis(pdfPath, targetRole, analysisMode) {
 function runPythonCommand(script, args) {
   return new Promise((resolve, reject) => {
     const python = pythonExecutable();
+    const timeoutMs = Number(process.env.PYTHON_ANALYSIS_TIMEOUT_MS || 60000);
+    let settled = false;
     const child = spawn(python, [script, ...args], {
       cwd: BACKEND_ROOT,
       env: {
         ...process.env,
+        JOBFIT_ENABLE_SEMANTIC_MODEL: process.env.JOBFIT_ENABLE_SEMANTIC_MODEL || (isProduction ? "false" : "true"),
+        JOBFIT_ENABLE_GEMINI: process.env.JOBFIT_ENABLE_GEMINI || (isProduction ? "false" : "true"),
+        GEMINI_TIMEOUT_SECONDS: process.env.GEMINI_TIMEOUT_SECONDS || "12",
         PYTHONPATH: [path.join(ROOT, ".codex-python-packages"), BACKEND_ROOT].filter(fs.existsSync).join(path.delimiter)
       }
     });
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      child.kill("SIGTERM");
+      reject(httpError(504, "Analisis membutuhkan waktu terlalu lama. Coba CV PDF teks yang lebih ringkas atau ulangi beberapa saat lagi."));
+    }, timeoutMs);
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", (chunk) => {
@@ -661,8 +688,16 @@ function runPythonCommand(script, args) {
     child.stderr.on("data", (chunk) => {
       stderr += chunk.toString();
     });
-    child.on("error", reject);
+    child.on("error", (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      reject(error);
+    });
     child.on("close", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
       if (code !== 0) {
         return reject(new Error(stderr || `Python analysis exited with code ${code}`));
       }

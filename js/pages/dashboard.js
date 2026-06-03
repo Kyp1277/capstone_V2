@@ -26,6 +26,7 @@ export function renderDashboard(params = {}) {
         <h1>${escapeHtml(data.targetRole)}</h1>
         <p>Analisis terakhir: ${escapeHtml(data.date)}</p>
         ${analysisMode ? `<span class="mode-badge">${analysisMode}</span>` : ""}
+        ${data.roleFamily ? `<span class="mode-badge">Role family: ${escapeHtml(data.roleFamily)}</span>` : ""}
       </div>
       <div class="dashboard-actions">
         <a href="#/upload" class="btn btn-primary">Analisis CV Lain</a>
@@ -52,9 +53,10 @@ export function renderDashboard(params = {}) {
         </div>
         <div class="executive-main">
           <div class="executive-headline">
-            <span class="mode-badge">Confidence ${confidence}</span>
+            <span class="mode-badge">Confidence ${escapeHtml(data.matchConfidence || confidence)}</span>
             <h2>${escapeHtml(headline.title)}</h2>
             <p>${escapeHtml(headline.description)}</p>
+            ${renderRankingReasons(data.rankingReasons)}
           </div>
           <div class="executive-actions">
             ${topActions.map((item, index) => `
@@ -68,6 +70,7 @@ export function renderDashboard(params = {}) {
       </article>
 
       ${renderWarningPanel(data.warnings)}
+      ${renderTargetAvailabilityPanel(data)}
     </section>
 
     <section class="container dashboard-grid">
@@ -84,7 +87,7 @@ export function renderDashboard(params = {}) {
 
         <article class="card dashboard-card dashboard-skills-card">
           <h3>Skill yang Terdeteksi</h3>
-          <p>Skill berikut terbaca dari CV Anda.</p>
+          <p>Skill berikut terbaca dari isi CV dan dipakai sebagai bukti utama matching.</p>
           ${renderSkillChips(data)}
         </article>
 
@@ -94,15 +97,20 @@ export function renderDashboard(params = {}) {
         </article>
 
         <article class="card dashboard-card dashboard-missing-card">
-          <h3>Missing Skills</h3>
-          <p>Skill yang disarankan untuk dilengkapi agar CV lebih relevan.</p>
-          ${renderChipList(data.missingSkills, "Tidak ada missing skill utama untuk hasil analisis ini.", "warning")}
+          <h3>Skill Prioritas</h3>
+          <p>Skill berikut paling berpengaruh untuk memperkuat kecocokan dengan target pekerjaan.</p>
+          ${renderChipList(data.missingSkills, "Belum ada gap skill utama yang perlu diprioritaskan.", "warning")}
+        </article>
+
+        <article class="card dashboard-card dashboard-quality-card">
+          <h3>Audit Kualitas CV</h3>
+          ${renderCvQualityAudit(data)}
         </article>
       </div>
 
       <div class="dashboard-column">
         <article class="card dashboard-card dashboard-priority-card">
-          <h3>Action Plan CV</h3>
+          <h3>Rencana Aksi CV</h3>
           <p>Langkah praktis yang bisa langsung dipakai sebelum mengirim lamaran.</p>
           ${renderActionPlan(data)}
         </article>
@@ -110,6 +118,11 @@ export function renderDashboard(params = {}) {
         <article class="card dashboard-card dashboard-improvements-card">
           <h3>Rekomendasi Perbaikan CV</h3>
           ${renderRecommendationList(data.improvements)}
+        </article>
+
+        <article class="card dashboard-card dashboard-roadmap-card">
+          <h3>Roadmap Karier</h3>
+          ${renderRoadmap(data)}
         </article>
 
         <article class="card dashboard-card dashboard-jobs-card">
@@ -131,6 +144,10 @@ function isTargetMismatch(data, topJob) {
     return false;
   }
 
+  if (data.targetAvailable === false) {
+    return true;
+  }
+
   if (!topJob) {
     return true;
   }
@@ -140,6 +157,13 @@ function isTargetMismatch(data, topJob) {
 
 function getExecutiveHeadline(data, topJob, targetMismatch) {
   if (targetMismatch) {
+    if (data.targetAvailable === false) {
+      return {
+        title: `Target ${data.targetRole || "ini"} belum tersedia`,
+        description: data.targetAvailabilityReason || "Dataset lowongan saat ini belum memiliki target tersebut, jadi JobFit tidak memaksakan rekomendasi pekerjaan."
+      };
+    }
+
     return {
       title: `Belum ada match kuat untuk ${data.targetRole || "target ini"}`,
       description: "JobFit menemukan sinyal kecocokan yang masih lemah, jadi lowongan terdekat tidak dipromosikan sebagai rekomendasi utama. Perkuat skill inti, pengalaman, atau ubah target pekerjaan agar hasilnya lebih akurat."
@@ -179,22 +203,22 @@ function getScoreMessage(score) {
   const normalizedScore = Number(score || 0);
 
   if (normalizedScore >= 80) {
-    return "CV sangat relevan dengan target pekerjaan. Fokus berikutnya adalah memperjelas bukti dampak, pencapaian, dan pengalaman paling kuat.";
+    return "CV sudah sangat dekat dengan target pekerjaan. Fokus berikutnya adalah memperjelas bukti dampak, pencapaian, dan pengalaman paling kuat.";
   }
 
   if (normalizedScore >= 60) {
-    return "CV sudah cukup kuat untuk target pekerjaan ini, tetapi masih ada beberapa missing skills dan konteks pengalaman yang perlu diperjelas.";
+    return "CV sudah cukup kuat untuk target pekerjaan ini. Perbaikan terbesar biasanya datang dari skill prioritas dan bukti pengalaman yang lebih konkret.";
   }
 
   if (normalizedScore >= 40) {
-    return "CV memiliki sebagian kecocokan dengan target pekerjaan, namun perlu penguatan pada skill utama, pengalaman relevan, dan kata kunci lowongan.";
+    return "CV sudah punya sebagian sinyal yang relevan, tetapi masih perlu penguatan pada skill utama, pengalaman, dan istilah yang sesuai lowongan.";
   }
 
   if (normalizedScore >= 20) {
     return "Kecocokan masih rendah. Prioritaskan skill dasar yang diminta lowongan dan tambahkan project atau pengalaman yang langsung relevan.";
   }
 
-  return "CV belum menunjukkan kecocokan yang cukup dengan target pekerjaan. Mulai dari melengkapi skill inti, ringkasan profil, dan pengalaman yang relevan.";
+  return "CV belum menunjukkan kecocokan yang cukup kuat. Mulai dari headline yang jelas, skill inti, dan project atau pengalaman yang relevan.";
 }
 
 function getAnalysisModeLabel(mode) {
@@ -286,6 +310,53 @@ function renderWarningPanel(warnings) {
   `;
 }
 
+function renderRankingReasons(reasons) {
+  if (!Array.isArray(reasons) || reasons.length === 0) {
+    return "";
+  }
+
+  return `
+    <ul class="recommendation-list compact-list">
+      ${reasons.slice(0, 4).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+    </ul>
+  `;
+}
+
+function renderEvidenceChips(title, items, chipClass = "match") {
+  if (!Array.isArray(items) || items.length === 0) {
+    return "";
+  }
+
+  return `
+    <div class="mini-chips-container" style="margin-top: 8px;">
+      <strong class="visualizer-label">${escapeHtml(title)}</strong>
+      ${items.slice(0, 6).map((item) => `<span class="mini-chip ${chipClass}">${escapeHtml(item)}</span>`).join("")}
+    </div>
+  `;
+}
+
+function renderRequirementFit(job) {
+  const fit = job.requirementFit || {};
+  const seniority = job.seniorityFit || {};
+  const mandatory = Array.isArray(job.mandatorySkills) ? job.mandatorySkills.slice(0, 5) : [];
+  const nice = Array.isArray(job.niceToHaveSkills) ? job.niceToHaveSkills.slice(0, 5) : [];
+
+  if (!mandatory.length && !nice.length && fit.score === undefined) {
+    return "";
+  }
+
+  return `
+    <div class="score-breakdown" style="margin-top: 12px;">
+      ${fit.score !== undefined ? `<span>Requirement fit ${Number(fit.score || 0)}%</span>` : ""}
+      ${fit.mandatory !== undefined ? `<span>Mandatory ${Number(fit.mandatory || 0)}%</span>` : ""}
+      ${fit.niceToHave !== undefined ? `<span>Nice-to-have ${Number(fit.niceToHave || 0)}%</span>` : ""}
+      ${seniority.score !== undefined ? `<span>Seniority ${Number(seniority.score || 0)}%</span>` : ""}
+    </div>
+    ${renderEvidenceChips("Skill wajib lowongan", mandatory, "gap")}
+    ${renderEvidenceChips("Skill pendukung", nice, "match")}
+  `;
+}
+
 function renderExperienceSummary(data) {
   const experiences = Array.isArray(data.workExperiences) ? data.workExperiences.slice(0, 3) : [];
   const totalYears = Number(data.totalExperienceYears || 0);
@@ -336,7 +407,7 @@ function renderPriorityList(data) {
   ].slice(0, 5);
 
   if (!priorities.length) {
-    return `<div class="inline-empty">Belum ada prioritas perbaikan khusus dari hasil analisis ini.</div>`;
+    return `<div class="inline-empty">Belum ada prioritas perbaikan khusus. Pertahankan struktur CV dan tambahkan bukti dampak bila ada.</div>`;
   }
 
   return `
@@ -349,6 +420,16 @@ function renderPriorityList(data) {
 function renderActionPlan(data) {
   const jobs = Array.isArray(data.jobs) ? data.jobs : [];
   const topJob = jobs[0] || {};
+  const targetMismatch = isTargetMismatch(data, jobs[0] || null);
+
+  if (targetMismatch) {
+    return `
+      <ul class="recommendation-list action-list">
+        ${getTopActions(data, null, true).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+      </ul>
+    `;
+  }
+
   const matched = Array.isArray(topJob.matchedSkills) ? topJob.matchedSkills.slice(0, 3) : [];
   const missing = Array.isArray(topJob.missingSkills) ? topJob.missingSkills.slice(0, 3) : [];
   const improvements = Array.isArray(topJob.improvements) && topJob.improvements.length
@@ -359,10 +440,10 @@ function renderActionPlan(data) {
   const actions = [
     matched.length
       ? `Tonjolkan bukti penggunaan ${matched.join(", ")} pada pengalaman atau project paling relevan.`
-      : "Tambahkan bagian skill yang lebih eksplisit agar sistem dan recruiter mudah membaca kemampuan utama.",
+      : "Tambahkan bagian skill yang lebih eksplisit agar recruiter mudah membaca kemampuan utama.",
     missing.length
-      ? `Lengkapi atau pelajari keyword gap: ${missing.join(", ")}.`
-      : "Pertahankan struktur CV saat ini dan tambah metrik dampak pekerjaan.",
+      ? `Prioritaskan gap berikut: ${missing.join(", ")}. Tunjukkan lewat project, pelatihan, atau pengalaman nyata.`
+      : "Pertahankan struktur CV saat ini dan tambah metrik dampak pekerjaan bila tersedia.",
     ...improvements
   ].slice(0, 5);
 
@@ -377,14 +458,130 @@ function renderActionPlan(data) {
   `;
 }
 
-function renderJobList(jobs, dashboardHref, data, targetMismatch = false) {
-  // Daftar pekerjaan berasal dari ranking hasil analisis.
-  if (!Array.isArray(jobs) || jobs.length === 0) {
-    return `<div class="inline-empty">Belum ada rekomendasi pekerjaan yang tersedia untuk hasil analisis ini.</div>`;
+function renderTargetAvailabilityPanel(data) {
+  if (data.targetAvailable !== false) {
+    return "";
   }
 
+  return `
+    <article class="card dashboard-card target-mismatch-panel">
+      <strong>Target belum tersedia di dataset</strong>
+      <p>${escapeHtml(data.targetAvailabilityReason || "Lowongan untuk target ini belum tersedia, jadi JobFit tidak menampilkan rekomendasi pekerjaan random.")}</p>
+      ${data.suggestionReason ? `<p>${escapeHtml(data.suggestionReason)}</p>` : ""}
+      ${renderSuggestedTargets(data.suggestedTargetRoles)}
+    </article>
+  `;
+}
+
+function renderSuggestedTargets(targets) {
+  if (!Array.isArray(targets) || targets.length === 0) {
+    return `<div class="inline-empty">Belum ada target alternatif yang cukup dekat dari dataset saat ini.</div>`;
+  }
+
+  return `
+    <div class="chip-row" style="margin-top: 12px;">
+      ${targets.map((target) => `<span class="skill-chip">${escapeHtml(target)}</span>`).join("")}
+    </div>
+  `;
+}
+
+function renderRoadmap(data) {
+  const steps = Array.isArray(data.roadmapSteps) ? data.roadmapSteps : [];
+  const projects = Array.isArray(data.portfolioProjects) ? data.portfolioProjects : [];
+
+  return `
+    ${renderRecommendationList(steps)}
+    <div style="margin-top: 14px;">
+      <strong>Project portofolio</strong>
+      ${renderRecommendationList(projects)}
+    </div>
+  `;
+}
+
+function renderCvQualityAudit(data) {
+  const score = Number(data.cvQualityScore || 0);
+  const findings = Array.isArray(data.cvQualityFindings) ? data.cvQualityFindings : [];
+  const hints = Array.isArray(data.rewriteHints) ? data.rewriteHints : [];
+
+  return `
+    <div class="job-meta" style="margin-bottom: 12px;">
+      <span class="score-badge ${scoreLabelClass(score)}">${score}% CV quality</span>
+    </div>
+    <strong>Temuan</strong>
+    ${renderRecommendationList(findings)}
+    ${renderEvidenceSummary(data.evidenceSummary)}
+    ${renderEvidenceWarnings(data)}
+    ${renderBenchmarkWarnings(data.benchmarkWarnings)}
+    <div style="margin-top: 14px;">
+      <strong>Saran rewrite</strong>
+      ${renderRecommendationList(hints)}
+    </div>
+  `;
+}
+
+function renderEvidenceSummary(summary) {
+  if (!summary || typeof summary !== "object") {
+    return "";
+  }
+
+  const items = [
+    ["Project", summary.projectEvidence],
+    ["Pengalaman", summary.experienceEvidence],
+    ["Pendidikan", summary.educationEvidence],
+    ["Daftar skill", summary.listedOnly],
+    ["Fuzzy", summary.fuzzyOnly]
+  ].filter(([, value]) => value !== undefined && value !== null);
+
+  if (!items.length) {
+    return "";
+  }
+
+  return `
+    <div class="score-breakdown" style="margin-top: 12px;">
+      ${items.map(([label, value]) => `<span>${label}: ${Number(value || 0)}</span>`).join("")}
+    </div>
+  `;
+}
+
+function renderEvidenceWarnings(data) {
+  const warnings = [
+    ...(Array.isArray(data.evidenceWarnings) ? data.evidenceWarnings : []),
+    ...(Number(data.suppressedJobsCount || 0) > 0
+      ? [`${Number(data.suppressedJobsCount || 0)} kandidat lowongan disembunyikan karena bukti kecocokannya belum cukup kuat.`]
+      : [])
+  ];
+
+  if (!warnings.length) {
+    return "";
+  }
+
+  return `
+    <ul class="recommendation-list compact-list" style="margin-top: 12px;">
+      ${warnings.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+    </ul>
+  `;
+}
+
+function renderBenchmarkWarnings(warnings) {
+  if (!Array.isArray(warnings) || warnings.length === 0) {
+    return "";
+  }
+
+  return `
+    <ul class="recommendation-list compact-list" style="margin-top: 12px;">
+      ${warnings.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+    </ul>
+  `;
+}
+
+function renderJobList(jobs, dashboardHref, data, targetMismatch = false) {
+  // Daftar pekerjaan berasal dari ranking hasil analisis.
   if (targetMismatch) {
-    return renderTargetMismatchJobs(data, jobs);
+    return renderTargetMismatchJobs(data, Array.isArray(jobs) ? jobs : []);
+  }
+
+  if (!Array.isArray(jobs) || jobs.length === 0) {
+    return `<div class="inline-empty">Belum ada rekomendasi pekerjaan yang tersedia untuk hasil analisis ini.</div>`;
   }
 
   const groups = [
@@ -409,25 +606,25 @@ function renderJobList(jobs, dashboardHref, data, targetMismatch = false) {
 }
 
 function renderTargetMismatchJobs(data, jobs) {
-  const alternatives = jobs.slice(0, 3);
+  if (data.targetAvailable === false) {
+    return `
+      <div class="target-mismatch-panel">
+        <strong>Lowongan tidak ditampilkan</strong>
+        <p>${escapeHtml(data.targetAvailabilityReason || "Target belum tersedia di dataset lowongan JobFit saat ini.")}</p>
+        ${data.suggestionReason ? `<p>${escapeHtml(data.suggestionReason)}</p>` : ""}
+        ${renderSuggestedTargets(data.suggestedTargetRoles)}
+        <div class="target-mismatch-actions">
+          <a href="#/upload" class="btn btn-primary">Coba target alternatif</a>
+          <a href="#/upload" class="btn btn-secondary" data-rerun-target="${escapeHtml(data.targetRole || "")}">Analisis ulang</a>
+        </div>
+      </div>
+    `;
+  }
 
   return `
     <div class="target-mismatch-panel">
       <strong>Tidak ada rekomendasi yang cukup cocok</strong>
-      <p>Score terbaik masih di bawah ambang rekomendasi untuk target ${escapeHtml(data.targetRole || "ini")}. Lowongan terdekat tidak ditampilkan sebagai rekomendasi utama agar hasil tidak menyesatkan.</p>
-      ${
-        alternatives.length
-          ? `<div class="weak-alternatives">
-              <span>Alternatif terdekat, bukan rekomendasi utama:</span>
-              ${alternatives.map((job) => `
-                <div class="weak-alternative">
-                  <strong>${escapeHtml(job.title || "Lowongan")}</strong>
-                  <small>${Number(job.match || 0)}% match</small>
-                </div>
-              `).join("")}
-            </div>`
-          : ""
-      }
+      <p>Score terbaik masih di bawah ambang rekomendasi untuk target ${escapeHtml(data.targetRole || "ini")}. Lowongan tidak ditampilkan agar hasil tidak menyesatkan.</p>
       <div class="target-mismatch-actions">
         <a href="#/upload" class="btn btn-primary" data-rerun-target="${escapeHtml(data.targetRole || "")}">Analisis ulang target ini</a>
         <a href="#/upload" class="btn btn-secondary">Coba target lain</a>
@@ -465,6 +662,10 @@ function jobCard(job, dashboardHref, index) {
         <div class="job-explanation">
           <strong>Kenapa cocok?</strong>
           <p>${escapeHtml(job.detail || "Belum ada alasan kecocokan untuk pekerjaan ini.")}</p>
+          ${renderRankingReasons(job.rankingReasons)}
+          ${renderEvidenceChips("Bukti kuat", job.strongEvidence, "match")}
+          ${renderEvidenceChips("Bukti lemah", job.weakEvidence, "gap")}
+          ${renderRequirementFit(job)}
         </div>
         <div class="job-explanation">
           <strong>Yang perlu ditingkatkan</strong>
@@ -535,8 +736,11 @@ function getJobFitLabel(match) {
 function renderScoreBreakdown(breakdown) {
   const items = [
     ["Skill match", breakdown.skillMatch],
-    ["Semantic similarity", breakdown.semanticMatch],
+    ["Requirement fit", breakdown.requirementFit],
+    ["Corpus relevance", breakdown.corpusRelevance ?? breakdown.semanticMatch],
     ["Role relevance", breakdown.roleMatch],
+    ["Role family", breakdown.roleFamilyMatch],
+    ["Seniority", breakdown.seniorityMatch],
     ["Context match", breakdown.contextMatch],
     ["Education match", breakdown.educationMatch]
   ].filter(([, value]) => value !== undefined && value !== null);
@@ -555,8 +759,11 @@ function renderScoreBreakdown(breakdown) {
 function renderScoreBars(breakdown) {
   const items = [
     ["Skill", breakdown?.skillMatch],
-    ["Semantic", breakdown?.semanticMatch],
+    ["Requirement", breakdown?.requirementFit],
+    ["Corpus", breakdown?.corpusRelevance ?? breakdown?.semanticMatch],
     ["Role", breakdown?.roleMatch],
+    ["Family", breakdown?.roleFamilyMatch],
+    ["Seniority", breakdown?.seniorityMatch],
     ["Context", breakdown?.contextMatch],
     ["Education", breakdown?.educationMatch]
   ].filter(([, value]) => value !== undefined && value !== null);

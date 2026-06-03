@@ -8,7 +8,7 @@ try:
 except ImportError:
     _RAPIDFUZZ_AVAILABLE = False
 
-NLP_CACHE_VERSION = "work-experience-v1.3-skill-db-expanded-domains-2026-05-30"
+NLP_CACHE_VERSION = "role-family-bm25-v2-requirement-evidence-2026-06-03"
 
 # =========================================
 # MASTER SKILL DATABASE
@@ -70,6 +70,14 @@ SKILL_LIST = [
 "microsoft excel",
 "figma",
 "ui ux",
+"photoshop",
+"illustrator",
+"branding",
+"data entry",
+"crm",
+"interview",
+"quality control",
+"k3",
 
 # =====================================
 # DEVOPS, CLOUD & MODERN FRONTEND
@@ -172,6 +180,8 @@ SKILL_LIST = [
 "social media",
 "email marketing",
 "training",
+"screening",
+"onboarding",
 "performance management",
 "time management",
 "problem solving",
@@ -316,6 +326,15 @@ SKILL_SYNONYMS = {
 
     # UI UX
     "ui/ux": "ui ux",
+    "adobe photoshop": "photoshop",
+    "adobe illustrator": "illustrator",
+    "customer relationship management": "crm",
+    "interview kandidat": "interview",
+    "wawancara": "interview",
+    "keselamatan kerja": "k3",
+    "kesehatan dan keselamatan kerja": "k3",
+    "kontrol kualitas": "quality control",
+    "qc": "quality control",
 
     # Office
     "ms office": "microsoft office",
@@ -726,15 +745,26 @@ JOB_DOMAIN_KEYWORDS = {
         "sales",
         "administrative",
         "administration",
+        "admin",
+        "data entry",
+        "office",
+        "filing",
+        "scheduling",
         "customer service",
         "hr",
         "human resources",
         "recruitment",
+        "recruiter",
+        "interview",
+        "onboarding",
     ],
     "design": [
         "designer",
         "ui ux",
         "figma",
+        "photoshop",
+        "illustrator",
+        "branding",
         "creative",
         "graphic",
         "product design",
@@ -1595,6 +1625,11 @@ def extract_profile_with_gemini(text, target_role=None):
     Also generates highly personalized roadmap improvements if target_role is provided.
     Provides a seamless fallback to the local regex parser if GEMINI_API_KEY is not set.
     """
+    gemini_enabled = os.environ.get("JOBFIT_ENABLE_GEMINI")
+    if str(gemini_enabled or "false").strip().lower() in {"0", "false", "no", "off"}:
+        logger.info("Gemini parser is disabled. Falling back to local parser.")
+        return None
+
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         logger.info("GEMINI_API_KEY is not configured. Falling back to local parser.")
@@ -1632,6 +1667,8 @@ def extract_profile_with_gemini(text, target_role=None):
         {text}
         """
         
+        timeout_seconds = int(os.environ.get("GEMINI_TIMEOUT_SECONDS", "12"))
+
         if _PYDANTIC_AVAILABLE:
             response = model.generate_content(
                 prompt,
@@ -1639,6 +1676,7 @@ def extract_profile_with_gemini(text, target_role=None):
                     response_mime_type="application/json",
                     response_schema=GeminiResumeProfile,
                 ),
+                request_options={"timeout": timeout_seconds},
             )
             result = json.loads(response.text)
             logger.info("Successfully parsed resume using Gemini API.")
@@ -1650,6 +1688,7 @@ def extract_profile_with_gemini(text, target_role=None):
                 generation_config=genai.GenerationConfig(
                     response_mime_type="application/json"
                 ),
+                request_options={"timeout": timeout_seconds},
             )
             result = json.loads(response.text)
             logger.info("Successfully parsed resume using Gemini API (JSON fallback).")
@@ -1658,6 +1697,229 @@ def extract_profile_with_gemini(text, target_role=None):
     except Exception as e:
         logger.warning("Gemini parsing failed, falling back to local NLP parser: %s", str(e))
         return None
+
+# =========================================
+# UNIVERSAL ROADMAP & COURSES DATABASE
+# =========================================
+UNIVERSAL_ROADMAP_DATABASE = {
+    # Programming & Web Development
+    "python": {
+        "course": "Udemy (Complete Python Bootcamp) / Coursera (Python for Everybody)",
+        "project": "Buat aplikasi parser data mandiri menggunakan Python dan pustaka standar."
+    },
+    "javascript": {
+        "course": "freeCodeCamp (JavaScript Algorithms and Data Structures) / Coursera (Programming with JavaScript)",
+        "project": "Bangun aplikasi kalkulator interaktif atau game berbasis web sederhana."
+    },
+    "typescript": {
+        "course": "Udemy (Understanding TypeScript) / TypeScript Official Handbook",
+        "project": "Migrasikan proyek JavaScript kecil ke TypeScript dengan konfigurasi tipe data yang ketat."
+    },
+    "react": {
+        "course": "freeCodeCamp (React Course) / Coursera (Front-End Web Development with React)",
+        "project": "Membangun dashboard analitik interaktif menggunakan React & Tailwind CSS."
+    },
+    "vue": {
+        "course": "Udemy (Vue - The Complete Guide) / Vue.js Official Guide",
+        "project": "Buat aplikasi to-do list modular dengan Vuex/Pinia untuk manajemen state."
+    },
+    "node.js": {
+        "course": "Udemy (The Complete Node.js Developer Course) / Coursera (Server-side Development with Node.js)",
+        "project": "Buat command-line tool (CLI) lokal menggunakan Node.js untuk otomatisasi tugas file."
+    },
+    "express": {
+        "course": "freeCodeCamp (Node.js and Express Tutorial) / Express.js Official Docs",
+        "project": "Bangun backend web server sederhana dengan routing REST API dan middleware logging."
+    },
+    "laravel": {
+        "course": "Laracasts (Laravel 11 from Scratch) / Udemy (Master Laravel)",
+        "project": "Buat aplikasi web portal berita lengkap dengan sistem autentikasi dan database relasional."
+    },
+    "fastapi": {
+        "course": "FastAPI Official Tutorial / TestDriven.io (FastAPI Tutorials)",
+        "project": "Bangun REST API berkecepatan tinggi menggunakan FastAPI dengan validasi Pydantic."
+    },
+    "rest api": {
+        "course": "Coursera (APIs and Web Services) / freeCodeCamp (REST API Tutorial)",
+        "project": "Buat dokumentasi Swagger/OpenAPI interaktif untuk endpoints API yang Anda rancang."
+    },
+    "git": {
+        "course": "GitHub Skills (Introduction to GitHub) / freeCodeCamp (Git and GitHub Tutorial)",
+        "project": "Buat repositori publik di GitHub dengan alur kerja git branch, commit konvensional, dan README.md."
+    },
+    "docker": {
+        "course": "Docker Official Tutorials / freeCodeCamp (Docker for Beginners)",
+        "project": "Buat Dockerfile multi-stage untuk aplikasi fullstack dan deploy ke layanan cloud."
+    },
+    "kubernetes": {
+        "course": "edX (Introduction to Kubernetes) / Udacity (Scalable Microservices with Kubernetes)",
+        "project": "Buat konfigurasi manifest deployment Kubernetes lokal menggunakan Minikube."
+    },
+    "aws": {
+        "course": "AWS Skill Builder (Cloud Practitioner) / Coursera (AWS Cloud Technical Essentials)",
+        "project": "Deploy aplikasi web statis di AWS S3 dengan cloudfront dan monitoring performa."
+    },
+    "gcp": {
+        "course": "Coursera (Google Cloud Computing Foundation) / Google Cloud Skills Boost",
+        "project": "Deploy backend aplikasi web di Google App Engine atau Cloud Run dengan logging otomatis."
+    },
+    "azure": {
+        "course": "Microsoft Learn (Azure Fundamentals AZ-900) / Coursera (Microsoft Azure Services)",
+        "project": "Buat server virtual Azure VM dan konfigurasikan database SQL server jarak jauh."
+    },
+
+    # Data Science & AI
+    "sql": {
+        "course": "Coursera (SQL for Data Science) / Udacity (SQL for Data Analysis)",
+        "project": "Buat skema database relasional lengkap dengan query JOIN, subqueries, dan agregasi data."
+    },
+    "postgresql": {
+        "course": "Coursera (PostgreSQL for Everybody) / PostgreSQL Tutorial (postgresqltutorial.com)",
+        "project": "Desain database PostgreSQL dan tulis query teroptimasi untuk performa pencarian."
+    },
+    "mysql": {
+        "course": "Udemy (The Ultimate MySQL Bootcamp) / MySQL Official Tutorial",
+        "project": "Rancang skema tabel MySQL untuk mencatat data transaksi e-commerce sederhana."
+    },
+    "mongodb": {
+        "course": "MongoDB University (MongoDB Basics) / freeCodeCamp (MongoDB Tutorial)",
+        "project": "Buat database non-relasional untuk mencatat dokumen profil pengguna yang fleksibel."
+    },
+    "data analysis": {
+        "course": "Coursera (Google Data Analytics Professional Certificate) / Udacity (Data Analyst Nanodegree)",
+        "project": "Analisis dataset publik (misal dari Kaggle) dan buat presentasi temuan bisnis yang menarik."
+    },
+    "machine learning": {
+        "course": "Kaggle Learn (Intro to Machine Learning) / Dicoding atau kursus statistik dasar yang membahas evaluasi data secara lokal",
+        "project": "Buat studi analisis tabular offline: jelaskan dataset, fitur, metrik evaluasi, dan insight tanpa memakai API eksternal atau model pretrained."
+    },
+    "pandas": {
+        "course": "Kaggle Learn (Pandas) / Udemy (Data Analysis with Pandas)",
+        "project": "Lakukan pembersihan data (*data cleaning*) dan manipulasi tabel pada dataset kotor menggunakan Pandas."
+    },
+    "excel": {
+        "course": "Coursera (Excel Skills for Business) / Macquarie University Excel Course",
+        "project": "Buat lembar kerja rekapitulasi data keuangan dengan rumus VLOOKUP, INDEX-MATCH, dan Pivot Table."
+    },
+    "power bi": {
+        "course": "Microsoft Learn (Power BI Data Analyst) / Coursera (Microsoft Power BI Data Analyst)",
+        "project": "Buat dashboard visualisasi data interaktif lengkap dengan filter dan grafik tren bisnis."
+    },
+    "tableau": {
+        "course": "Coursera (Data Visualization with Tableau Specialization) / Tableau eLearning",
+        "project": "Buat story data visualization interaktif di Tableau Public untuk laporan kinerja operasional."
+    },
+
+    # Business, Design, & Others
+    "figma": {
+        "course": "Coursera (Google UX Design Professional Certificate) / Udemy (Figma UI/UX Design)",
+        "project": "Buat prototype hi-fi responsif untuk aplikasi mobile 5 halaman menggunakan Figma."
+    },
+    "ui ux": {
+        "course": "Coursera (Introduction to UX Design by Georgia Tech) / Interaction Design Foundation (IxDF)",
+        "project": "Lakukan riset pengguna (*user research*) dan buat user flow serta wireframe kertas."
+    },
+    "seo": {
+        "course": "Coursera (Search Engine Optimization Specialization) / HubSpot Academy (SEO Certification)",
+        "project": "Lakukan audit SEO pada website publik dan susun strategi perbaikan konten."
+    },
+    "digital marketing": {
+        "course": "Coursera (Google Digital Marketing & E-commerce Certificate) / Google Digital Garage",
+        "project": "Rancang rencana kampanye iklan media sosial lengkap dengan segmentasi audiens dan anggaran."
+    },
+    "copywriting": {
+        "course": "Udemy (The Complete Copywriting Course) / HubSpot Copywriting Tutorial",
+        "project": "Buat salinan iklan (*ad copy*) persuasif dan teks landing page untuk peluncuran produk."
+    },
+    "accounting": {
+        "course": "Coursera (Introduction to Financial Accounting by Wharton) / AccountingCoach.com",
+        "project": "Susun laporan neraca dan laporan laba rugi sederhana berdasarkan data transaksi dummy."
+    },
+    "finance": {
+        "course": "Coursera (Corporate Finance Specialization) / edX (Introduction to Finance)",
+        "project": "Lakukan analisis kelayakan investasi menggunakan metrik NPV dan IRR di Excel."
+    },
+    "human resources": {
+        "course": "Coursera (Human Resource Management Specialization) / Udemy (HR Fundamentals)",
+        "project": "Buat dokumen panduan proses onboarding dan matriks evaluasi kinerja karyawan baru."
+    },
+    "recruitment": {
+        "course": "LinkedIn Learning (Recruiting Foundations) / Udemy (Talent Acquisition)",
+        "project": "Susun kriteria scorecard interview dan template rubrik penilaian untuk proses screening CV."
+    },
+    "customer service": {
+        "course": "Coursera (Customer Service Fundamentals) / Udemy (Customer Service Mastery)",
+        "project": "Tulis panduan standar operasional penanganan komplain pelanggan (FAQ & Escalation matrix)."
+    },
+    "logistics": {
+        "course": "Coursera (Supply Chain Logistics) / edX (Logistics and Supply Chain Management)",
+        "project": "Buat simulasi alur rantai pasok barang dari produsen hingga gudang penyimpanan."
+    },
+    "warehouse": {
+        "course": "Udemy (Warehouse Management) / CILT Certification courses",
+        "project": "Buat template checklist inventarisasi stock opname barang masuk dan keluar di gudang."
+    },
+    "project management": {
+        "course": "Coursera (Google Project Management Professional Certificate) / PMI (PMP Prep)",
+        "project": "Buat gantt chart proyek dan rencana mitigasi risiko menggunakan Jira/Trello."
+    },
+    "agile": {
+        "course": "Coursera (Agile Project Management) / Scrum.org (PSM I Prep)",
+        "project": "Rancang siklus sprint planning dan struktur daily standup meeting untuk tim kecil."
+    },
+    "scrum": {
+        "course": "Scrum.org (Professional Scrum Master Guides) / Udemy (Scrum Master Certification)",
+        "project": "Buat manajemen backlog produk dan visualisasi sprint burndown chart."
+    },
+    "cooking": {
+        "course": "Rouxbe Online Culinary School / Coursera (Stanford Introduction to Food and Health)",
+        "project": "Tulis menu hidangan standar lengkap dengan lembar resep dan standard food cost."
+    },
+    "food safety": {
+        "course": "ServSafe Certification Course / Coursera (Food Safety and Quality Management)",
+        "project": "Buat rencana kerja standar HACCP (Hazard Analysis Critical Control Point) untuk dapur profesional."
+    },
+    "hygiene": {
+        "course": "Udemy (Kitchen Sanitation and Hygiene) / World Health Organization Food Safety Course",
+        "project": "Buat checklist sanitasi dapur harian dan protokol kebersihan personal staf."
+    },
+    "housekeeping": {
+        "course": "Udemy (Hotel Housekeeping Training) / AHLEI Housekeeping Courses",
+        "project": "Buat SOP pembersihan kamar hotel tipe standar dan lembar pemeriksaan kualitas kamar."
+    },
+    "hotel management": {
+        "course": "Coursera (Hotel Management Specialization) / edX (Hospitality Management)",
+        "project": "Susun rencana alur reservasi tamu dari check-in hingga check-out."
+    },
+    "civil engineering": {
+        "course": "edX (Introduction to Civil Engineering) / Coursera (Construction Project Management)",
+        "project": "Buat perhitungan rencana anggaran biaya (RAB) untuk konstruksi rumah sederhana."
+    },
+    "autocad": {
+        "course": "Autodesk Certified Professional (AutoCAD) / Udemy (AutoCAD Beginners to Pro)",
+        "project": "Gambar denah lantai arsitektural 2D lengkap dengan layer, dimensi, dan legenda."
+    },
+}
+
+FORBIDDEN_RECOMMENDATION_SKILLS = {
+    "deep learning",
+    "tensorflow",
+    "pytorch",
+    "neural network",
+    "cnn",
+    "llm",
+    "chatgpt",
+    "gemini",
+    "openai",
+    "tensorflow hub",
+    "automl",
+}
+
+SAFE_RECOMMENDATION_DATABASE = {
+    skill: entry
+    for skill, entry in UNIVERSAL_ROADMAP_DATABASE.items()
+    if skill not in FORBIDDEN_RECOMMENDATION_SKILLS
+}
 
 
 # =========================================

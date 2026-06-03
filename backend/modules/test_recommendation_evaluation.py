@@ -43,6 +43,13 @@ EVAL_JOBS = [
         "description": "Data analyst mengolah SQL Python Excel dashboard data visualization statistics ETL reporting dan business insight.",
     },
     {
+        "title": "Data Entry Administrative Staff",
+        "company": "Demo",
+        "location": "Jakarta",
+        "keyword": "admin data entry administrative office",
+        "description": "Data entry administrative staff menginput dokumen, filing, scheduling, Microsoft Excel, surat menyurat, dan operasional kantor.",
+    },
+    {
         "title": "Junior Web Developer",
         "company": "Demo",
         "location": "Bandung",
@@ -91,6 +98,27 @@ EVAL_JOBS = [
         "keyword": "sales marketing business development account executive",
         "description": "Sales marketing executive mencari prospect cold calling customer relationship negotiation sales target presentation CRM dan laporan penjualan.",
     },
+    {
+        "title": "Social Media Marketing Specialist",
+        "company": "Demo",
+        "location": "Jakarta",
+        "keyword": "social media marketing content campaign",
+        "description": "Social media marketing specialist membuat content calendar campaign Instagram TikTok copywriting analytics engagement report dan coordination dengan creative team.",
+    },
+    {
+        "title": "Logistics Warehouse Staff",
+        "company": "Demo",
+        "location": "Bekasi",
+        "keyword": "logistics warehouse inventory staff",
+        "description": "Logistics warehouse staff mengelola inventory gudang, picking packing, stock opname, shipping document, delivery coordination, Excel, dan laporan operasional.",
+    },
+    {
+        "title": "Koki / Cook",
+        "company": "Demo",
+        "location": "Bali",
+        "keyword": "koki cook chef kitchen culinary restaurant",
+        "description": "Koki menyiapkan bahan makanan, memasak menu restoran, menjaga kebersihan dapur, food preparation, hygiene, food safety, dan bekerja dengan tim kitchen.",
+    },
 ]
 
 
@@ -111,8 +139,35 @@ def run_case(case):
     expected_skills = {skill.lower() for skill in case.get("expectedSkills", [])}
     skill_hits = detected & expected_skills
 
+    if case.get("expectNoJobs"):
+        suggestions = " ".join(result.get("suggestedTargetRoles", [])).lower()
+        expected_suggestions = case.get("expectedSuggestions", [])
+        if "expectTargetAvailable" in case:
+            assert result.get("targetAvailable") is case["expectTargetAvailable"], (
+                f"{case['id']} expected targetAvailable={case['expectTargetAvailable']}"
+            )
+        else:
+            assert result.get("targetAvailable") is False, f"{case['id']} expected unavailable target"
+        assert result["jobs"] == [], f"{case['id']} expected no jobs, got {result['jobs'][:1]}"
+        assert result["score"] <= 20, f"{case['id']} expected low score, got {result['score']}"
+        assert skill_hits, f"{case['id']} expected at least one skill hit from {expected_skills}, got {detected}"
+        assert contains_any(suggestions, expected_suggestions), (
+            f"{case['id']} expected relevant suggestions from {expected_suggestions}, got {suggestions}"
+        )
+        assert "evidenceSummary" in result, f"{case['id']} expected evidenceSummary field"
+        assert "suggestionReason" in result, f"{case['id']} expected suggestionReason field"
+        return {
+            "id": case["id"],
+            "topJob": "NO_JOBS",
+            "score": result["score"],
+            "skillHits": sorted(skill_hits),
+        }
+
     assert result["score"] > 0, f"{case['id']} expected positive score"
     assert result["jobs"], f"{case['id']} expected job recommendations"
+    assert "requirementFit" in top_job, f"{case['id']} expected requirementFit in job response"
+    assert "seniorityFit" in top_job, f"{case['id']} expected seniorityFit in job response"
+    assert "evidenceBreakdown" in top_job, f"{case['id']} expected evidenceBreakdown in job response"
     assert contains_any(top_text, case["expectedTopRoleKeywords"]), (
         f"{case['id']} top job not relevant: {top_job.get('title')}"
     )

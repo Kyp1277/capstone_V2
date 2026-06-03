@@ -7,3 +7,12 @@ __pycache__/
 *.log
 backend/.env
 backend/data/processed_jobs_cache.json
+
+# Local test CVs and assets
+CV GENBI 2.pdf
+hasil genbi.pdf
+CV Rifky.pdf
+hf-timeout-patch-send.zip
+cv/
+genbi_preview/
+hf-timeout-patch-send/

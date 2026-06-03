@@ -14,7 +14,8 @@ def test_autocomplete_uses_configured_api_base_url():
     http_js = (PROJECT_ROOT / "js" / "http.js").read_text(encoding="utf-8")
     events_js = (PROJECT_ROOT / "js" / "events.js").read_text(encoding="utf-8")
     assert 'import { API_BASE_URL, state } from "./state.js";' in http_js
-    assert "baseURL: API_BASE_URL" in http_js
+    assert "new URL(path, API_BASE_URL)" in http_js
+    assert "fetch(requestUrl, init)" in http_js
     assert 'import { http } from "./http.js";' in events_js
     assert 'http.get("/api/analyses/titles"' in events_js
 

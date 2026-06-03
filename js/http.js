@@ -1,18 +1,102 @@
-import axios from "axios";
 import { API_BASE_URL, state } from "./state.js";
 
-export const http = axios.create({
-  baseURL: API_BASE_URL,
-  timeout: 120000
-});
+const DEFAULT_TIMEOUT_MS = 120000;
 
-http.interceptors.request.use((config) => {
+export const http = {
+  get(url, config = {}) {
+    return request({ ...config, method: "GET", url });
+  },
+
+  post(url, data, config = {}) {
+    return request({ ...config, method: "POST", url, data });
+  },
+
+  patch(url, data, config = {}) {
+    return request({ ...config, method: "PATCH", url, data });
+  },
+
+  request
+};
+
+async function request({ url, method = "GET", data, params, headers = {}, timeout = DEFAULT_TIMEOUT_MS, ...options }) {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), timeout);
+  const requestUrl = buildUrl(url, params);
+  const requestHeaders = { ...headers };
+  const init = {
+    ...options,
+    method,
+    headers: requestHeaders,
+    signal: controller.signal
+  };
+
   if (state.auth.token) {
-    config.headers = config.headers || {};
-    config.headers.Authorization = `Bearer ${state.auth.token}`;
+    requestHeaders.Authorization = `Bearer ${state.auth.token}`;
   }
-  return config;
-});
+
+  if (data instanceof FormData) {
+    init.body = data;
+  } else if (data !== undefined) {
+    requestHeaders["Content-Type"] = requestHeaders["Content-Type"] || "application/json";
+    init.body = JSON.stringify(data);
+  }
+
+  try {
+    const response = await fetch(requestUrl, init);
+    const payload = await parseResponse(response);
+
+    if (!response.ok) {
+      throw createHttpError(response, payload);
+    }
+
+    return {
+      data: payload,
+      status: response.status,
+      headers: response.headers
+    };
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw new Error("Request timeout. Coba beberapa saat lagi.");
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
+function buildUrl(path, params) {
+  const url = new URL(path, API_BASE_URL);
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") {
+      url.searchParams.set(key, value);
+    }
+  });
+
+  return url.toString();
+}
+
+async function parseResponse(response) {
+  const text = await response.text();
+  if (!text) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    return text;
+  }
+}
+
+function createHttpError(response, payload) {
+  const error = new Error(response.statusText || "Request gagal diproses.");
+  error.response = {
+    status: response.status,
+    data: payload
+  };
+  return error;
+}
 
 export function apiErrorMessage(error, fallback = "Layanan sedang bermasalah. Coba beberapa saat lagi.") {
   const detail = error?.response?.data?.detail || error?.response?.data?.error;

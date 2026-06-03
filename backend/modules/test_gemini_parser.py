@@ -11,7 +11,17 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import os
+import types
 from unittest.mock import MagicMock, patch
+
+# Mock google generativeai package to allow running tests without installation
+try:
+    import google.generativeai
+except ImportError:
+    mock_genai = MagicMock()
+    sys.modules["google"] = MagicMock()
+    sys.modules["google.generativeai"] = mock_genai
+
 from modules import nlp
 
 class MockGenerativeModel:
@@ -47,8 +57,17 @@ class MockGenerativeModel:
         """
         return mock_response
 
-@patch("google.generativeai.GenerativeModel", new=MockGenerativeModel)
-@patch.dict(os.environ, {"GEMINI_API_KEY": "fake-api-key"})
+
+mock_genai = types.SimpleNamespace(
+    configure=lambda **kwargs: None,
+    GenerativeModel=MockGenerativeModel,
+    GenerationConfig=lambda **kwargs: kwargs,
+)
+mock_google = types.SimpleNamespace(generativeai=mock_genai)
+
+
+@patch.dict(sys.modules, {"google": mock_google, "google.generativeai": mock_genai})
+@patch.dict(os.environ, {"GEMINI_API_KEY": "fake-api-key", "JOBFIT_ENABLE_GEMINI": "true"})
 def test_gemini_parser_successful():
     text = "Some random resume text"
     result = nlp.extract_profile_with_gemini(text, target_role="Frontend Developer")

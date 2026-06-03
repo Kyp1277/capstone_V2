@@ -1,10 +1,13 @@
 import json
 import logging
+import math
+import re
 import threading
+from collections import Counter
 
 from modules.config import DATASET_PATH, PROCESSED_JOBS_CACHE_PATH
 from modules.data_loader import load_jobs
-from modules.nlp import NLP_CACHE_VERSION, clean_text, extract_skills, infer_job_domains
+from modules.nlp import NLP_CACHE_VERSION, SOFT_SKILLS, clean_text, extract_skills, infer_job_domains
 
 
 logger = logging.getLogger("jobfit.jobs")
@@ -12,6 +15,85 @@ logger = logging.getLogger("jobfit.jobs")
 JOBS_CACHE = None
 PROCESSED_JOBS_CACHE = None
 PROCESSED_JOBS_LOCK = threading.Lock()
+CORPUS_IDF = {}
+CORPUS_AVG_LENGTH = 1.0
+
+MANDATORY_MARKERS = {
+    "required", "requirement", "requirements", "wajib", "harus", "must", "minimal",
+    "minimum", "min", "dibutuhkan", "menguasai", "memiliki", "able to", "mampu",
+    "qualification", "qualifications", "kualifikasi",
+}
+NICE_TO_HAVE_MARKERS = {
+    "preferred", "plus", "nilai tambah", "diutamakan", "nice to have", "bonus",
+    "lebih disukai", "preferable", "advantage",
+}
+
+
+def infer_requirement_seniority(title, description):
+    text = clean_text(f"{title}. {description[:900]}")
+    if any(token in text for token in ("lead", "head", "manager", "supervisor", "senior manager")):
+        return "senior_manager"
+    if any(token in text for token in ("senior", "sr.", "minimal 5 tahun", "5 tahun", "7 tahun")):
+        return "senior"
+    if any(token in text for token in ("mid", "middle", "minimal 3 tahun", "3 tahun", "4 tahun")):
+        return "mid_level"
+    if any(token in text for token in ("junior", "fresh graduate", "entry level", "entry-level")):
+        return "junior"
+    return "entry_level"
+
+
+def split_requirement_sentences(text):
+    return [
+        clean_text(part)
+        for part in re.split(r"[\n\r.;•\-\u2022]+", str(text or ""))
+        if clean_text(part)
+    ]
+
+
+def parse_job_requirements(title, keyword, description, job_skills, job_domains):
+    title_keyword = clean_text(f"{title}. {keyword}")
+    sentences = split_requirement_sentences(description)
+    mandatory = []
+    nice_to_have = []
+    soft = []
+
+    for skill in job_skills:
+        if skill in SOFT_SKILLS:
+            soft.append(skill)
+            continue
+
+        skill_text = clean_text(skill)
+        matching_sentences = [
+            sentence for sentence in sentences
+            if f" {skill_text} " in f" {sentence} "
+        ]
+        is_title_keyword = f" {skill_text} " in f" {title_keyword} "
+        is_mandatory = is_title_keyword or any(
+            any(marker in sentence for marker in MANDATORY_MARKERS)
+            for sentence in matching_sentences
+        )
+        is_nice = any(
+            any(marker in sentence for marker in NICE_TO_HAVE_MARKERS)
+            for sentence in matching_sentences
+        )
+
+        if is_mandatory and not is_nice:
+            mandatory.append(skill)
+        else:
+            nice_to_have.append(skill)
+
+    if not mandatory:
+        technical = [skill for skill in job_skills if skill not in SOFT_SKILLS]
+        mandatory = technical[: min(5, len(technical))]
+        nice_to_have = [skill for skill in nice_to_have if skill not in set(mandatory)]
+
+    return {
+        "mandatorySkills": mandatory[:8],
+        "niceToHaveSkills": nice_to_have[:10],
+        "softSkills": soft[:8],
+        "domainRequirements": list(job_domains or [])[:6],
+        "seniorityRequirement": infer_requirement_seniority(title, description),
+    }
 
 
 STOPWORDS = {
@@ -84,6 +166,7 @@ def prepare_jobs_once():
         if cached_jobs:
             logger.info("Loaded %s processed jobs from cache.", len(cached_jobs))
             PROCESSED_JOBS_CACHE = cached_jobs
+            build_corpus_stats(PROCESSED_JOBS_CACHE)
             return PROCESSED_JOBS_CACHE
 
         logger.info("Preparing processed jobs cache.")
@@ -97,6 +180,7 @@ def prepare_jobs_once():
             job_text = f"{title}. {description}"
             job_skills = extract_skills(job_text, fuzzy=False)
             job_domains = infer_job_domains(f"{title}. {keyword}. {description[:1200]}")
+            requirements = parse_job_requirements(title, keyword, description, job_skills, job_domains)
 
             processed_jobs.append(
                 {
@@ -109,17 +193,63 @@ def prepare_jobs_once():
                     "jobSkills": job_skills,
                     "jobSkillSet": set(job_skills),
                     "jobDomains": job_domains,
+                    **requirements,
                     "searchText": clean_text(job_text),
                     "titleTokens": token_set(title),
                     "keywordTokens": token_set(keyword),
                     "descriptionTokens": token_set(description[:1200]),
+                    "requirementTokens": token_set(f"{title}. {keyword}. {description[:1800]}"),
+                    "corpusTokens": tokenize(f"{title}. {keyword}. {description[:1800]}"),
                 }
             )
 
         PROCESSED_JOBS_CACHE = processed_jobs
+        build_corpus_stats(PROCESSED_JOBS_CACHE)
         save_processed_jobs_cache(processed_jobs)
         logger.info("Prepared %s processed jobs.", len(processed_jobs))
         return PROCESSED_JOBS_CACHE
+
+
+def build_corpus_stats(processed_jobs):
+    global CORPUS_IDF, CORPUS_AVG_LENGTH
+
+    docs = [list(job.get("corpusTokens") or tokenize(job.get("jobText", ""))) for job in processed_jobs]
+    total_docs = len(docs) or 1
+    CORPUS_AVG_LENGTH = sum(len(doc) for doc in docs) / total_docs or 1.0
+    doc_freq = Counter()
+
+    for doc in docs:
+        doc_freq.update(set(doc))
+
+    CORPUS_IDF = {
+        token: math.log(1 + ((total_docs - freq + 0.5) / (freq + 0.5)))
+        for token, freq in doc_freq.items()
+    }
+
+
+def corpus_relevance_score(query_text, job):
+    query_tokens = tokenize(query_text)
+    doc_tokens = list(job.get("corpusTokens") or tokenize(job.get("jobText", "")))
+
+    if not query_tokens or not doc_tokens:
+        return 0.0
+
+    counts = Counter(doc_tokens)
+    doc_len = len(doc_tokens)
+    k1 = 1.35
+    b = 0.72
+    score = 0.0
+
+    for token in set(query_tokens):
+        frequency = counts.get(token, 0)
+        if not frequency:
+            continue
+
+        idf = CORPUS_IDF.get(token, math.log(1 + len(CORPUS_IDF)))
+        denominator = frequency + k1 * (1 - b + b * (doc_len / CORPUS_AVG_LENGTH))
+        score += idf * ((frequency * (k1 + 1)) / denominator)
+
+    return max(0.0, min(1.0, score / (score + 8.0)))
 
 
 def serialize_processed_job(job):
@@ -128,6 +258,13 @@ def serialize_processed_job(job):
     serialized["titleTokens"] = sorted(job["titleTokens"])
     serialized["keywordTokens"] = sorted(job["keywordTokens"])
     serialized["descriptionTokens"] = sorted(job["descriptionTokens"])
+    serialized["requirementTokens"] = sorted(job.get("requirementTokens", []))
+    serialized["corpusTokens"] = list(job.get("corpusTokens", []))
+    serialized["mandatorySkills"] = list(job.get("mandatorySkills", []))
+    serialized["niceToHaveSkills"] = list(job.get("niceToHaveSkills", []))
+    serialized["softSkills"] = list(job.get("softSkills", []))
+    serialized["domainRequirements"] = list(job.get("domainRequirements", []))
+    serialized["seniorityRequirement"] = job.get("seniorityRequirement", "entry_level")
     return serialized
 
 
@@ -137,6 +274,13 @@ def hydrate_processed_job(job):
     hydrated["titleTokens"] = set(job.get("titleTokens", []))
     hydrated["keywordTokens"] = set(job.get("keywordTokens", []))
     hydrated["descriptionTokens"] = set(job.get("descriptionTokens", []))
+    hydrated["requirementTokens"] = set(job.get("requirementTokens", []))
+    hydrated["corpusTokens"] = list(job.get("corpusTokens", []))
+    hydrated["mandatorySkills"] = list(job.get("mandatorySkills", []))
+    hydrated["niceToHaveSkills"] = list(job.get("niceToHaveSkills", []))
+    hydrated["softSkills"] = list(job.get("softSkills", []))
+    hydrated["domainRequirements"] = list(job.get("domainRequirements", []))
+    hydrated["seniorityRequirement"] = job.get("seniorityRequirement", "entry_level")
     return hydrated
 
 
