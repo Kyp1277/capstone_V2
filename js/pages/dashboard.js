@@ -77,7 +77,7 @@ export function renderDashboard(params = {}) {
       <div class="dashboard-column">
         <article class="card dashboard-card score-card dashboard-score-card">
           <h3>Match Score</h3>
-          <div class="score-circle" style="background: radial-gradient(circle at center, var(--score-hole) 58%, transparent 59%), conic-gradient(${scoreColor(data.score)} 0 ${data.score}%, var(--border) ${data.score}% 100%);">
+          <div class="score-circle" style="background: radial-gradient(circle at center, var(--score-hole) 58%, transparent 59%), conic-gradient(var(--border) 0% 100%);">
             <span class="score-value" data-count-to="${data.score}">0%</span>
           </div>
           <span class="score-label ${scoreLabelClass(data.score)}">${data.verdict}</span>
@@ -89,6 +89,9 @@ export function renderDashboard(params = {}) {
           <h3>Skill yang Terdeteksi</h3>
           <p>Skill berikut terbaca dari isi CV dan dipakai sebagai bukti utama matching.</p>
           ${renderSkillChips(data)}
+          <p class="helper-text" style="margin-top: 14px; font-size: 12px; line-height: 1.4; color: var(--text); opacity: 0.75;">
+            * Keterangan warna: <strong>hijau</strong> (sangat sering ditulis / relevan kuat), <strong>biru</strong> (terbaca langsung dari CV), <strong>ungu</strong> (kemiripan penulisan / variasi kata kunci).
+          </p>
         </article>
 
         <article class="card dashboard-card dashboard-experience-card">
@@ -576,18 +579,20 @@ function renderBenchmarkWarnings(warnings) {
 
 function renderJobList(jobs, dashboardHref, data, targetMismatch = false) {
   // Daftar pekerjaan berasal dari ranking hasil analisis.
+  const cleanJobs = (Array.isArray(jobs) ? jobs : []).filter((job) => job && typeof job === "object");
+
   if (targetMismatch) {
-    return renderTargetMismatchJobs(data, Array.isArray(jobs) ? jobs : []);
+    return renderTargetMismatchJobs(data, cleanJobs);
   }
 
-  if (!Array.isArray(jobs) || jobs.length === 0) {
+  if (cleanJobs.length === 0) {
     return `<div class="inline-empty">Belum ada rekomendasi pekerjaan yang tersedia untuk hasil analisis ini.</div>`;
   }
 
   const groups = [
-    ["Paling cocok", jobs.filter((job) => Number(job.match || 0) >= 75)],
-    ["Masih bisa dikejar", jobs.filter((job) => Number(job.match || 0) >= 50 && Number(job.match || 0) < 75)],
-    ["Kurang cocok", jobs.filter((job) => Number(job.match || 0) < 50)]
+    ["Paling cocok", cleanJobs.filter((job) => Number(job.match || 0) >= 75)],
+    ["Masih bisa dikejar", cleanJobs.filter((job) => Number(job.match || 0) >= 50 && Number(job.match || 0) < 75)],
+    ["Kurang cocok", cleanJobs.filter((job) => Number(job.match || 0) < 50)]
   ].filter(([, items]) => items.length);
 
   return groups
@@ -595,10 +600,10 @@ function renderJobList(jobs, dashboardHref, data, targetMismatch = false) {
       <section class="job-category">
         <div class="job-category-header">
           <strong>${label}</strong>
-          <span>${items.length} rekomendasi</span>
+          <span class="job-count">${items.length} rekomendasi</span>
         </div>
-        <div class="job-grid">
-          ${items.map((job) => jobCard(job, dashboardHref, jobs.indexOf(job))).join("")}
+        <div class="job-cards">
+          ${items.map((job, index) => jobCard(job, dashboardHref, index)).join("")}
         </div>
       </section>
     `)
@@ -797,7 +802,7 @@ export function drawRadarChart(canvas, breakdown) {
   const height = canvas.height;
   const cx = width / 2;
   const cy = height / 2;
-  const radius = width * 0.30; // Max radius for 100% (scaled down to prevent labels clipping)
+  const radius = width * 0.28; // Max radius scaled down slightly for safe spacing and shadow rendering
 
   ctx.clearRect(0, 0, width, height);
 
@@ -818,7 +823,7 @@ export function drawRadarChart(canvas, breakdown) {
   const textColor = isDark ? "#9ca3af" : "#4b5563";
   const primaryColor = isDark ? "rgba(99, 102, 241, 0.85)" : "rgba(79, 70, 229, 0.85)"; // Indigo
   const fillColor = isDark ? "rgba(99, 102, 241, 0.18)" : "rgba(79, 70, 229, 0.12)";
-  const labelFont = "bold 11px Inter, system-ui, sans-serif";
+  const labelFont = "600 12px Outfit, sans-serif";
 
   // 1. Draw Concentric Polygons
   const levels = [0.2, 0.4, 0.6, 0.8, 1.0];
@@ -872,6 +877,7 @@ export function drawRadarChart(canvas, breakdown) {
   }
 
   // 4. Draw Score Polygon
+  ctx.save();
   ctx.beginPath();
   for (let i = 0; i < count; i++) {
     const angle = i * angleStep - Math.PI / 2;
@@ -887,9 +893,16 @@ export function drawRadarChart(canvas, breakdown) {
   ctx.fillStyle = fillColor;
   ctx.fill();
 
+  // Soft drop shadow (clean depth, not neon)
+  ctx.shadowColor = isDark ? "rgba(0, 0, 0, 0.45)" : "rgba(79, 70, 229, 0.18)";
+  ctx.shadowBlur = 6;
+  ctx.shadowOffsetX = 0;
+  ctx.shadowOffsetY = 3;
+
   ctx.strokeStyle = primaryColor;
   ctx.lineWidth = 2.5;
   ctx.stroke();
+  ctx.restore();
 
   // 5. Draw Vertices Dots
   ctx.fillStyle = primaryColor;

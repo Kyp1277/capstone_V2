@@ -35,7 +35,6 @@ from modules.analysis_service import (  # noqa: F401,E402
     cosine_token_score,
     education_match_score,
     get_match_level,
-    get_semantic_model,
     overlap_score,
     role_match_score,
     select_candidate_jobs,

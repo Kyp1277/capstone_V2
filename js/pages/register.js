@@ -39,7 +39,10 @@ export function renderRegister() {
 
             <div class="form-field">
               <label for="registerPassword">Password</label>
-              <input class="text-input" id="registerPassword" name="password" type="password" autocomplete="new-password" placeholder="Minimal 6 karakter" />
+              <div style="position: relative; display: flex; align-items: center;">
+                <input class="text-input" id="registerPassword" name="password" type="password" autocomplete="new-password" placeholder="Minimal 6 karakter" style="width: 100%; padding-right: 40px;" />
+                <button type="button" data-action="toggle-password" data-target="registerPassword" style="position: absolute; right: 12px; background: none; border: none; cursor: pointer; color: var(--muted); font-size: 16px; padding: 4px; display: flex; align-items: center; justify-content: center;" aria-label="Tampilkan password">👁️</button>
+              </div>
               <span class="helper-text">Setelah daftar, Anda akan menerima kode OTP untuk verifikasi email.</span>
             </div>
 

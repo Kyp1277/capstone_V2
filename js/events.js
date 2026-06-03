@@ -269,6 +269,24 @@ export function bindEvents() {
     });
   });
 
+  document.querySelectorAll("[data-action='toggle-password']").forEach((button) => {
+    button.addEventListener("click", () => {
+      const targetId = button.dataset.target;
+      const input = document.getElementById(targetId);
+      if (!input) return;
+
+      if (input.type === "password") {
+        input.type = "text";
+        button.innerHTML = "🙈";
+        button.setAttribute("aria-label", "Sembunyikan password");
+      } else {
+        input.type = "password";
+        button.innerHTML = "👁️";
+        button.setAttribute("aria-label", "Tampilkan password");
+      }
+    });
+  });
+
   // Gambar Radar Chart jika elemen kanvas tersedia di DOM
   const canvas = document.getElementById("radarChart");
   if (canvas) {

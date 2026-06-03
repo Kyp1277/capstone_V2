@@ -17,12 +17,14 @@ const app = express();
 const port = Number(process.env.PORT || 5000);
 const host = process.env.HOST || "127.0.0.1";
 const isProduction = ["prod", "production"].includes(String(process.env.APP_ENV || "development").toLowerCase());
+const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL;
 const upload = multer({
   dest: path.join(os.tmpdir(), "jobfit-uploads"),
   limits: { fileSize: Number(process.env.MAX_UPLOAD_SIZE || 5 * 1024 * 1024) }
 });
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || process.env.POSTGRES_URL
+  connectionString: databaseUrl,
+  ssl: databaseSslOptions(databaseUrl)
 });
 const rateBuckets = new Map();
 
@@ -277,6 +279,19 @@ function loadEnvFile(filePath) {
       process.env[key] = value;
     }
   }
+}
+
+function databaseSslOptions(connectionString) {
+  if (!connectionString) return undefined;
+  const lower = connectionString.toLowerCase();
+  if (
+    lower.includes("sslmode=require") ||
+    lower.includes(".supabase.co") ||
+    lower.includes(".pooler.supabase.com")
+  ) {
+    return { rejectUnauthorized: false };
+  }
+  return undefined;
 }
 
 function corsOrigin() {
@@ -656,20 +671,24 @@ function runPythonAnalysis(pdfPath, targetRole, analysisMode) {
     targetRole,
     "--analysis-mode",
     analysisMode
-  ]).then((stdout) => JSON.parse(stdout));
+  ], { targetRole, analysisMode }).then((stdout) => JSON.parse(stdout));
 }
 
-function runPythonCommand(script, args) {
+function runPythonCommand(script, args, context = {}) {
   return new Promise((resolve, reject) => {
     const python = pythonExecutable();
-    const timeoutMs = Number(process.env.PYTHON_ANALYSIS_TIMEOUT_MS || 60000);
+    const timeoutMs = Number(process.env.PYTHON_ANALYSIS_TIMEOUT_MS || 90000);
+    const startedAt = Date.now();
     let settled = false;
+    console.info(
+      `[Analysis] Starting Python process mode=${context.analysisMode || "-"} target="${context.targetRole || "-"}" timeoutMs=${timeoutMs}`
+    );
     const child = spawn(python, [script, ...args], {
       cwd: BACKEND_ROOT,
       env: {
         ...process.env,
-        JOBFIT_ENABLE_SEMANTIC_MODEL: process.env.JOBFIT_ENABLE_SEMANTIC_MODEL || (isProduction ? "false" : "true"),
-        JOBFIT_ENABLE_GEMINI: process.env.JOBFIT_ENABLE_GEMINI || (isProduction ? "false" : "true"),
+        JOBFIT_ENABLE_SEMANTIC_MODEL: process.env.JOBFIT_ENABLE_SEMANTIC_MODEL || "false",
+        JOBFIT_ENABLE_GEMINI: process.env.JOBFIT_ENABLE_GEMINI || "false",
         GEMINI_TIMEOUT_SECONDS: process.env.GEMINI_TIMEOUT_SECONDS || "12",
         PYTHONPATH: [path.join(ROOT, ".codex-python-packages"), BACKEND_ROOT].filter(fs.existsSync).join(path.delimiter)
       }
@@ -678,6 +697,9 @@ function runPythonCommand(script, args) {
       if (settled) return;
       settled = true;
       child.kill("SIGTERM");
+      console.error(
+        `[Analysis] Python process timed out after ${Date.now() - startedAt}ms mode=${context.analysisMode || "-"} target="${context.targetRole || "-"}"`
+      );
       reject(httpError(504, "Analisis membutuhkan waktu terlalu lama. Coba CV PDF teks yang lebih ringkas atau ulangi beberapa saat lagi."));
     }, timeoutMs);
     let stdout = "";
@@ -692,6 +714,9 @@ function runPythonCommand(script, args) {
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
+      console.error(
+        `[Analysis] Python process failed after ${Date.now() - startedAt}ms mode=${context.analysisMode || "-"} target="${context.targetRole || "-"}": ${error.message}`
+      );
       reject(error);
     });
     child.on("close", (code) => {
@@ -699,8 +724,14 @@ function runPythonCommand(script, args) {
       settled = true;
       clearTimeout(timeout);
       if (code !== 0) {
+        console.error(
+          `[Analysis] Python process exited code=${code} after ${Date.now() - startedAt}ms mode=${context.analysisMode || "-"} target="${context.targetRole || "-"}"`
+        );
         return reject(new Error(stderr || `Python analysis exited with code ${code}`));
       }
+      console.info(
+        `[Analysis] Python process completed in ${Date.now() - startedAt}ms mode=${context.analysisMode || "-"} target="${context.targetRole || "-"}"`
+      );
       resolve(stdout.trim());
     });
   });

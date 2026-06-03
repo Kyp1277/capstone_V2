@@ -1,4 +1,6 @@
 import sys
+import tempfile
+import os
 from pathlib import Path
 
 
@@ -87,12 +89,47 @@ def test_roadmap_projects_follow_role_family():
     assert "laporan neraca" not in backend_text
 
 
+def test_cached_analysis_regenerates_id():
+    from modules import analysis_service
+
+    analysis_service.ANALYSIS_CACHE.clear()
+    payload = {
+        "id": "analysis-old",
+        "date": "01 January 2026",
+        "_cvText": "demo",
+        "jobs": [],
+    }
+
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+            tmp.write(b"%PDF demo cache")
+            tmp_path = tmp.name
+        pdf_hash = analysis_service.get_file_md5(tmp_path)
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+    cache_key = (
+        pdf_hash,
+        analysis_service.clean_text("Backend Developer"),
+        "targeted",
+        analysis_service.analysis_cache_signature(),
+    )
+    analysis_service.ANALYSIS_CACHE[cache_key] = payload
+
+    cached = analysis_service.clone_cached_analysis(analysis_service.ANALYSIS_CACHE[cache_key])
+    assert cached["id"] != payload["id"]
+    assert cached["_cvText"] == payload["_cvText"]
+
+
 def run_all():
     tests = [
         test_safe_recommendation_database_has_no_forbidden_content,
         test_backend_recommendations_ignore_off_role_courses,
         test_data_ml_recommendations_stay_local_and_rule_based,
         test_roadmap_projects_follow_role_family,
+        test_cached_analysis_regenerates_id,
     ]
 
     for test in tests:

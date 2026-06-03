@@ -48,7 +48,7 @@ export function renderLanding() {
                 <p class="mockup-title">${escapeHtml(mockupTitle)}</p>
                 <p class="mockup-subtitle">${escapeHtml(mockupSubtitle)}</p>
               </div>
-              <div class="score-mini" data-count-to="${mockupScore}" style="background: radial-gradient(circle at center, var(--score-hole) 55%, transparent 56%), conic-gradient(${scoreColor(mockupScore)} 0 ${mockupScore}%, var(--border) ${mockupScore}% 100%);">${mockupScore}%</div>
+              <div class="score-mini" data-count-to="${mockupScore}" style="background: radial-gradient(circle at center, var(--score-hole) 55%, transparent 56%), conic-gradient(${scoreColor(mockupScore)} 0% ${mockupScore}%, var(--border) ${mockupScore}% 100%);">${mockupScore}%</div>
             </div>
             <div class="mockup-grid">
               <div class="mini-panel">

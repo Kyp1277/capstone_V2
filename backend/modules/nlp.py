@@ -8,7 +8,7 @@ try:
 except ImportError:
     _RAPIDFUZZ_AVAILABLE = False
 
-NLP_CACHE_VERSION = "role-family-bm25-v2-requirement-evidence-2026-06-03"
+NLP_CACHE_VERSION = "role-family-bm25-v3-trigram-nlp-2026-06-04"
 
 # =========================================
 # MASTER SKILL DATABASE
@@ -1373,12 +1373,17 @@ def clean_text(text):
 # =========================================
 def _extract_fuzzy_tokens(cleaned_text, already_matched):
     """Extract candidate tokens from cleaned text for fuzzy matching.
-    Splits on whitespace and also tries bi-gram phrases (e.g. 'node js').
-    Only returns tokens that are NOT already matched by exact regex."""
+    Splits on whitespace and also tries bi-gram and tri-gram phrases.
+    Only returns tokens that are NOT already matched by exact regex.
+    
+    Includes guards to prevent token explosion and false positives:
+    - Minimum/maximum length constraints.
+    - Filtering trigrams starting/ending with common stop words.
+    """
     words = cleaned_text.split()
     candidates = set()
 
-    # Single word tokens
+    # Single word tokens (Unigrams)
     for word in words:
         if len(word) >= _FUZZY_MIN_TOKEN_LENGTH and word not in already_matched:
             candidates.add(word)
@@ -1388,6 +1393,35 @@ def _extract_fuzzy_tokens(cleaned_text, already_matched):
         bigram = f"{words[i]} {words[i+1]}"
         if bigram not in already_matched:
             candidates.add(bigram)
+
+    # Stop words definition for trigram boundary filtering to prevent false positives
+    STOP_WORDS = {
+        # English prepositions, conjunctions, articles, pronouns, and common verbs
+        "and", "or", "but", "so", "for", "with", "from", "by", "at", "in", "on", "to", "of", "about", 
+        "the", "a", "an", "this", "that", "these", "those", "it", "its", "they", "them", "their", "we", "us", "our",
+        "i", "my", "you", "your", "he", "him", "his", "she", "her", "is", "are", "was", "were", "be", "been", "have", "has", "had",
+        # Indonesian prepositions, conjunctions, articles, pronouns
+        "dan", "atau", "tetapi", "sehingga", "untuk", "dengan", "dari", "oleh", "di", "ke", "pada", "dalam",
+        "tentang", "ini", "itu", "ia", "dia", "mereka", "kita", "kami", "saya", "anda", "kamu", "adalah", "yaitu",
+        "yang", "juga", "serta", "sebagai", "bisa", "dapat", "ada", "telah", "sudah", "akan"
+    }
+
+    # Tri-gram phrases with performance and accuracy guards
+    for i in range(len(words) - 2):
+        w1, w2, w3 = words[i], words[i+1], words[i+2]
+        
+        # Guard 1: Trigrams must have a reasonable length (10 to 45 chars)
+        trigram_len = len(w1) + len(w2) + len(w3) + 2
+        if not (10 <= trigram_len <= 45):
+            continue
+            
+        # Guard 2: Skip trigrams that start or end with a stop word to avoid false positives
+        if w1 in STOP_WORDS or w3 in STOP_WORDS:
+            continue
+            
+        trigram = f"{w1} {w2} {w3}"
+        if trigram not in already_matched:
+            candidates.add(trigram)
 
     return candidates
 
@@ -1584,119 +1618,22 @@ def analyze_job_description(job):
 
 
 # =========================================
-# GEMINI LLM RESUME PARSER
+# EXTERNAL PARSER COMPATIBILITY STUB
 # =========================================
-import json
 import logging
-import os
 
 logger = logging.getLogger(__name__)
-
-try:
-    from pydantic import BaseModel, Field
-    from typing import List, Optional
-
-    class WorkExperienceItem(BaseModel):
-        role: str = Field(description="Role or job title, e.g. 'Frontend Developer'")
-        years: float = Field(description="Duration in years, e.g. 2.5 or 1.0")
-        company: str = Field(description="Company name")
-        duration: str = Field(description="Duration string, e.g. 'Jan 2021 - Jun 2023'")
-
-    class EducationItem(BaseModel):
-        degree: str = Field(description="Degree, e.g. 'Bachelor', 'Master', 'Diploma' or 'High School'")
-        major: str = Field(description="Major or field of study, e.g. 'Computer Science'")
-        institution: str = Field(description="School or university name")
-
-    class GeminiResumeProfile(BaseModel):
-        skills: List[str] = Field(description="List of technical and soft skills extracted from the resume")
-        work_experiences: List[WorkExperienceItem] = Field(description="List of work experiences")
-        education: List[EducationItem] = Field(description="List of education history")
-        summary: str = Field(description="A short, professional summary of the candidate's profile")
-        improvements: List[str] = Field(description="3-4 specific action items, e.g. recommended online courses (from platforms like Dicoding/Coursera), technical portfolio projects to build, or precise CV phrasing corrections to close their skill gap for the target role.")
-
-    _PYDANTIC_AVAILABLE = True
-except ImportError:
-    _PYDANTIC_AVAILABLE = False
 
 
 def extract_profile_with_gemini(text, target_role=None):
     """
-    Extract technical skills, experiences, and education profiles using Gemini API.
-    Also generates highly personalized roadmap improvements if target_role is provided.
-    Provides a seamless fallback to the local regex parser if GEMINI_API_KEY is not set.
+    Backward-compatible hook for older analysis code.
+
+    External LLM/API parsing is disabled for the Dicoding submission path.
+    Returning None forces the local deterministic parser to handle CV analysis.
     """
-    gemini_enabled = os.environ.get("JOBFIT_ENABLE_GEMINI")
-    if str(gemini_enabled or "false").strip().lower() in {"0", "false", "no", "off"}:
-        logger.info("Gemini parser is disabled. Falling back to local parser.")
-        return None
-
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        logger.info("GEMINI_API_KEY is not configured. Falling back to local parser.")
-        return None
-
-    try:
-        import google.generativeai as genai
-        genai.configure(api_key=api_key)
-        
-        model = genai.GenerativeModel("gemini-2.5-flash")
-        
-        prompt = f"""
-        You are an expert ATS (Applicant Tracking System) parser and elite career coach. 
-        Extract the following information from the resume text:
-        - Skills (both technical and soft skills)
-        - Work Experience (roles, years of experience, companies, durations)
-        - Education Profile (degrees, majors, institutions)
-        - A brief professional summary (MUST be written in Indonesian language / Bahasa Indonesia)
-        """
-        
-        if target_role:
-            prompt += f"""
-            - 3-4 highly specific, personalized improvements and concrete roadmap steps for their target role: '{target_role}'. (MUST be written in Indonesian language / Bahasa Indonesia).
-            This should include recommended online courses (prioritizing Indonesian platform 'Dicoding' or global 'Coursera/Udemy'), specific projects to build, or exact CV phrasing changes to close the skill gap.
-            """
-        else:
-            prompt += """
-            - List 3 general CV improvements to make their resume stand out (MUST be written in Indonesian language / Bahasa Indonesia).
-            """
-            
-        prompt += f"""
-        IMPORTANT: All human-readable output text fields (specifically 'summary' and the items in 'improvements') MUST be written in fluent, professional Indonesian language (Bahasa Indonesia).
-        
-        Resume text:
-        {text}
-        """
-        
-        timeout_seconds = int(os.environ.get("GEMINI_TIMEOUT_SECONDS", "12"))
-
-        if _PYDANTIC_AVAILABLE:
-            response = model.generate_content(
-                prompt,
-                generation_config=genai.GenerationConfig(
-                    response_mime_type="application/json",
-                    response_schema=GeminiResumeProfile,
-                ),
-                request_options={"timeout": timeout_seconds},
-            )
-            result = json.loads(response.text)
-            logger.info("Successfully parsed resume using Gemini API.")
-            return result
-        else:
-            fallback_schema = "{'skills': [str], 'work_experiences': [{'role': str, 'years': float, 'company': str, 'duration': str}], 'education': [{'degree': str, 'major': str, 'institution': str}], 'summary': str, 'improvements': [str]}"
-            response = model.generate_content(
-                prompt + f"\nFormat the output strictly as a JSON object matching this schema: {fallback_schema}",
-                generation_config=genai.GenerationConfig(
-                    response_mime_type="application/json"
-                ),
-                request_options={"timeout": timeout_seconds},
-            )
-            result = json.loads(response.text)
-            logger.info("Successfully parsed resume using Gemini API (JSON fallback).")
-            return result
-            
-    except Exception as e:
-        logger.warning("Gemini parsing failed, falling back to local NLP parser: %s", str(e))
-        return None
+    logger.info("External parser disabled; using local deterministic parser.")
+    return None
 
 # =========================================
 # UNIVERSAL ROADMAP & COURSES DATABASE

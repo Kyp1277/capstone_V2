@@ -7,8 +7,8 @@ WORKDIR /app
 # Copy package.json dan package-lock.json terlebih dahulu untuk memanfaatkan cache layer Docker
 COPY package*.json ./
 
-# Install dependensi Node.js
-RUN npm install --omit=dev
+# Install semua dependensi Node.js karena proses build Vite membutuhkan devDependencies
+RUN npm install
 
 # Copy requirements.txt dari backend
 COPY backend/requirements.txt ./backend/
@@ -20,7 +20,7 @@ RUN python -m pip install --no-cache-dir -r backend/requirements.txt
 COPY . .
 
 # Build frontend asset Vite menjadi file statis agar bisa langsung di-serve oleh Express di production
-RUN npm run build
+RUN npm run build && npm prune --omit=dev
 
 # Set environment variables untuk production
 ENV NODE_ENV=production
@@ -28,6 +28,11 @@ ENV APP_ENV=production
 ENV HOST=0.0.0.0
 ENV PORT=7860
 ENV PYTHON_PATH=python
+ENV PYTHON_ANALYSIS_TIMEOUT_MS=90000
+ENV MAX_CANDIDATE_JOBS=150
+ENV AUTO_MAX_CANDIDATE_JOBS=120
+ENV JOBFIT_ENABLE_GEMINI=false
+ENV JOBFIT_ENABLE_SEMANTIC_MODEL=false
 
 # Expose port (7860 adalah port standar yang wajib digunakan oleh Hugging Face Spaces)
 EXPOSE 7860

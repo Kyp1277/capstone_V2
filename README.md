@@ -1,6 +1,16 @@
+---
+title: JobFit Backend
+emoji: 💼
+colorFrom: blue
+colorTo: green
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # JobFit - AI CV Match Analyzer
 
-JobFit adalah aplikasi full-stack untuk menganalisis CV PDF, menghitung match score, menemukan missing skills, dan memberi rekomendasi pekerjaan berbasis AI. Stack utama proyek ini disesuaikan dengan checklist Dicoding: **Vite**, **Axios**, **Tailwind CSS**, **Express**, **RESTful API**, **PostgreSQL**, dan engine AI Python.
+JobFit adalah aplikasi full-stack untuk menganalisis CV PDF, menghitung match score, menemukan missing skills, dan memberi rekomendasi pekerjaan berbasis AI lokal. Stack utama proyek ini disesuaikan dengan checklist Dicoding: **Vite**, **Axios**, **Tailwind CSS**, **Express**, **RESTful API**, **PostgreSQL**, dan engine analisis Python.
 
 ## Checklist Dicoding
 
@@ -8,7 +18,7 @@ JobFit adalah aplikasi full-stack untuk menganalisis CV PDF, menghitung match sc
 - Networking calls: Axios client terpusat di `js/http.js`.
 - RESTful API: Express di `server.js` dengan endpoint `/api/auth/*`, `/api/analyses`, dan `/api/analyses/:id`.
 - Database: PostgreSQL untuk `jobs`, `users`, `sessions`, `email_otps`, dan `analyses`.
-- AI/ML: Python analysis engine memakai parser CV, OCR, Gemini parser fallback, dan semantic matching.
+- AI/ML: Python analysis engine memakai parser CV, rule-based scoring, taxonomy role, BM25/IDF lokal, dan token-cosine fallback. Rekomendasi pekerjaan tidak memakai TensorFlow Hub, ChatGPT/Gemini API, OpenAI API, AutoML, atau pretrained semantic model.
 - Responsive UI: layout responsif di `styles.css` plus Tailwind CSS build pipeline.
 - Deployment config: `render.yaml` untuk full-stack deploy dan Express bisa serve hasil `dist` pada production.
 
@@ -54,7 +64,8 @@ SMTP_USER=
 SMTP_PASSWORD=
 SMTP_FROM=
 SMTP_TLS=true
-GEMINI_API_KEY=
+JOBFIT_ENABLE_GEMINI=false
+JOBFIT_ENABLE_SEMANTIC_MODEL=false
 ```
 
 Import dataset jobs ke PostgreSQL:
@@ -122,7 +133,18 @@ Opsi paling sederhana adalah single-service deploy ke Render/Railway:
 - Start command:
   `npm start`
 - Environment minimal:
-  `APP_ENV=production`, `HOST=0.0.0.0`, `DATABASE_URL`, `SMTP_HOST`, `SMTP_FROM` atau `SMTP_USER`, `SMTP_PASSWORD` jika memakai `SMTP_USER`, dan `GEMINI_API_KEY` jika ingin parser Gemini aktif.
+  `APP_ENV=production`, `HOST=0.0.0.0`, `DATABASE_URL`, `SMTP_HOST`, `SMTP_FROM` atau `SMTP_USER`, `SMTP_PASSWORD` jika memakai `SMTP_USER`, `JOBFIT_ENABLE_GEMINI=false`, dan `JOBFIT_ENABLE_SEMANTIC_MODEL=false`.
+
+## Catatan Kepatuhan AI Dicoding
+
+JobFit menggunakan sistem rekomendasi deterministik dan explainable:
+
+- Rule-based requirement parser untuk skill wajib, skill pendukung, seniority, dan domain.
+- BM25/IDF lokal dari dataset lowongan sendiri untuk corpus relevance.
+- Taxonomy role dan synonym lokal untuk membedakan role seperti frontend, backend, data, admin, finance, design, culinary, dan lainnya.
+- Course/project recommendation memakai database aturan lokal (`SAFE_RECOMMENDATION_DATABASE`), bukan API eksternal.
+
+Sistem rekomendasi pekerjaan tidak menggunakan TensorFlow Hub, layanan API seperti ChatGPT/Gemini/OpenAI, AutoML, atau model pretrained untuk proses matching diskriminatif.
 
 Jika frontend dipisah ke Netlify/Vercel, deploy hasil `npm run build`, lalu arahkan `jobfitApiBaseUrl` ke URL Express API.
 

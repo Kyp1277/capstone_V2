@@ -1,13 +1,17 @@
+﻿import copy
+import hashlib
+import json
 import logging
 import math
-import os
 import time
+import uuid
 from collections import Counter
 
 from modules import jobs_service
-from modules.config import MAX_CANDIDATE_JOBS, MIN_EXTRACTED_TEXT_LENGTH, TOP_K, is_production
+from modules.config import AUTO_MAX_CANDIDATE_JOBS, MAX_CANDIDATE_JOBS, MIN_EXTRACTED_TEXT_LENGTH, TOP_K
 from modules.cv_parser import extract_text_from_pdf
 from modules.nlp import (
+    NLP_CACHE_VERSION,
     calculate_total_experience_years,
     clean_text,
     extract_education_profile,
@@ -22,42 +26,13 @@ from modules.nlp import (
 
 
 logger = logging.getLogger("jobfit.analysis")
-SEMANTIC_MODEL = None
-SEMANTIC_LOAD_FAILED = False
-
-# K7: Cache for job description embeddings — avoids re-encoding the same
-# job descriptions on every request. Key = first 120 chars of job text.
-_JOB_EMBEDDING_CACHE: dict = {}
-
-# K14: Semaphore to prevent concurrent requests from all calling model.encode()
-# simultaneously, which causes memory pressure on limited-resource servers.
-import threading
-_SEMANTIC_SEMAPHORE = threading.Semaphore(2)  # max 2 concurrent encode calls
-
-# K2: Preferred model order — more capable multilingual models first.
-# Falls back to the original small model if the preferred one is unavailable.
-# paraphrase-multilingual-MiniLM-L12-v2 supports 50+ languages including Indonesian
-# and is trained on multilingual sentence pairs, making it far better for
-# bilingual ID-EN CVs than the English-only all-MiniLM-L6-v2.
-_SEMANTIC_MODEL_CANDIDATES = [
-    "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",  # 50+ languages, ~120MB
-    "sentence-transformers/all-MiniLM-L6-v2",                       # English fallback, ~22MB
-]
+SCORING_CACHE_VERSION = "rule-bm25-core-gate-v4-2026-06-04"
 
 
-def _env_bool(name, default=False):
-    value = os.environ.get(name)
-    if value is None:
-        return default
-    return value.strip().lower() in {"1", "true", "yes", "on"}
-
-
-def semantic_model_enabled():
-    # The Express server starts a fresh Python process per analysis request.
-    # Loading sentence-transformers on every production request can push the
-    # response past platform/browser timeouts, so production defaults to the
-    # token-cosine fallback unless explicitly enabled.
-    return _env_bool("JOBFIT_ENABLE_SEMANTIC_MODEL", default=not is_production())
+def log_analysis_stage(timings, stage, started_at):
+    elapsed = time.perf_counter() - started_at
+    timings[stage] = elapsed
+    logger.info("Analysis stage %s completed in %.2fs", stage, elapsed)
 
 TARGET_ROLE_SYNONYMS = {
     "koki": {"cook", "chef", "kitchen", "dapur", "culinary", "kuliner", "memasak", "masak"},
@@ -180,6 +155,7 @@ ROLE_RISK_MESSAGES = {
     "seniority_mismatch": "Level lowongan terlihat lebih tinggi dari pengalaman yang terbaca.",
     "weak_skill_evidence": "Skill inti lowongan belum cukup kuat muncul di CV.",
     "core_role_evidence_missing": "Bukti skill inti untuk role target belum cukup kuat.",
+    "generic_skill_only_match": "Kecocokan terutama berasal dari skill umum, bukan bukti role-specific.",
 }
 
 CORE_ROLE_SKILLS = {
@@ -209,11 +185,16 @@ CORE_ROLE_SKILLS = {
 GENERAL_SUPPORT_SKILLS = {
     "excel", "microsoft office", "word", "powerpoint", "communication", "teamwork",
     "time management", "administration", "administrative", "problem solving",
-    "leadership", "collaboration",
+    "leadership", "collaboration", "finance", "budgeting", "data entry",
 }
 
 STRICT_CORE_FAMILIES = {
     "healthcare", "legal", "education", "security", "sports", "operator", "design",
+}
+
+SPECIFIC_AUTO_FAMILIES = {
+    "backend", "data", "design", "finance", "frontend", "fullstack", "hr",
+    "legal", "logistics", "operator", "sales",
 }
 
 COURSE_RECOMMENDATION_SKILL_ALLOWLIST = {
@@ -450,14 +431,19 @@ def overlap_score(left, right):
     return len(left_tokens & right_tokens) / len(left_tokens)
 
 
+EXPANDED_TOKENS_CACHE = {}
+
+
 def expanded_target_tokens(target_role):
-    tokens = token_set(target_role)
-    expanded = set(tokens)
+    if target_role not in EXPANDED_TOKENS_CACHE:
+        tokens = token_set(target_role)
+        expanded = set(tokens)
 
-    for token in tokens:
-        expanded.update(TARGET_ROLE_SYNONYMS.get(token, set()))
+        for token in tokens:
+            expanded.update(TARGET_ROLE_SYNONYMS.get(token, set()))
+        EXPANDED_TOKENS_CACHE[target_role] = expanded
 
-    return expanded
+    return EXPANDED_TOKENS_CACHE[target_role]
 
 
 def target_role_overlap(target_role, text):
@@ -509,76 +495,8 @@ def cosine_token_score(left, right):
     return dot / (left_norm * right_norm)
 
 
-def get_semantic_model():
-    global SEMANTIC_MODEL, SEMANTIC_LOAD_FAILED
-
-    if not semantic_model_enabled():
-        SEMANTIC_LOAD_FAILED = True
-        return None
-
-    if SEMANTIC_MODEL is not None or SEMANTIC_LOAD_FAILED:
-        return SEMANTIC_MODEL
-
-    try:
-        from sentence_transformers import SentenceTransformer
-    except Exception:
-        logger.info("sentence-transformers unavailable; using token cosine semantic fallback.")
-        SEMANTIC_LOAD_FAILED = True
-        return None
-
-    # K2: Try each candidate model in order — prefer multilingual model
-    for model_name in _SEMANTIC_MODEL_CANDIDATES:
-        try:
-            SEMANTIC_MODEL = SentenceTransformer(model_name)
-            logger.info("Loaded semantic model: %s", model_name)
-            return SEMANTIC_MODEL
-        except Exception:
-            logger.warning("Failed to load semantic model %s; trying next candidate.", model_name)
-
-    logger.warning("All semantic model candidates failed; using token cosine fallback.")
-    SEMANTIC_LOAD_FAILED = True
-    return None
-
-
 def semantic_similarity(left, right, cache_key=None):
-    model = get_semantic_model()
-
-    if model is None:
-        return cosine_token_score(left, right)
-
-    # K14: Limit concurrent model.encode() calls to avoid memory pressure
-    # on servers with limited resources. Falls back to token cosine if
-    # semaphore cannot be acquired within 5 seconds.
-    acquired = _SEMANTIC_SEMAPHORE.acquire(timeout=5)
-    if not acquired:
-        logger.warning("Semantic semaphore timeout; using token cosine fallback.")
-        return cosine_token_score(left, right)
-
-    try:
-        left_vec = model.encode(left, convert_to_numpy=True)
-
-        # K7: Cache right-side (job) embeddings — only encoded once per unique job
-        if cache_key is not None and cache_key in _JOB_EMBEDDING_CACHE:
-            right_vec = _JOB_EMBEDDING_CACHE[cache_key]
-        else:
-            right_vec = model.encode(right, convert_to_numpy=True)
-            if cache_key is not None:
-                _JOB_EMBEDDING_CACHE[cache_key] = right_vec
-
-        dot = float((left_vec * right_vec).sum())
-        left_norm = math.sqrt(float((left_vec * left_vec).sum()))
-        right_norm = math.sqrt(float((right_vec * right_vec).sum()))
-
-        if left_norm == 0 or right_norm == 0:
-            return 0.0
-
-        return max(0.0, min(1.0, dot / (left_norm * right_norm)))
-    except Exception:
-        logger.exception("Semantic model scoring failed; using token cosine fallback.")
-        return cosine_token_score(left, right)
-    finally:
-        _SEMANTIC_SEMAPHORE.release()
-
+    return cosine_token_score(left, right)
 
 def skill_match_score(cv_weighted_skills, job_skills):
     if not isinstance(cv_weighted_skills, dict):
@@ -631,6 +549,60 @@ def requirement_fit_score(cv_weighted_skills, mandatory_skills, nice_to_have_ski
     }
 
 
+def generic_job_adjustment(job, matched_skills, cv_role_family, job_family, requirement_fit):
+    matched = set(matched_skills or [])
+    matched_generic = matched & GENERAL_SUPPORT_SKILLS
+    matched_specific = matched - GENERAL_SUPPORT_SKILLS - SOFT_SKILLS
+    specificity = float(job.get("jobSpecificity", 0.55))
+    generic_ratio = float(job.get("genericSkillRatio", 0.0))
+    is_generic_job = bool(job.get("isGenericJob", False))
+    specific_cv_family = cv_role_family in SPECIFIC_AUTO_FAMILIES
+    family_aligned = role_family_match_score(cv_role_family, job_family) >= 0.65
+    requirement_score = float((requirement_fit or {}).get("score", 0.0))
+    mandatory_matched = set((requirement_fit or {}).get("mandatoryMatched", []))
+    mandatory_specific = mandatory_matched - GENERAL_SUPPORT_SKILLS - SOFT_SKILLS
+
+    penalty = 0.0
+    cap = None
+    reasons = []
+
+    if not matched:
+        return penalty, cap, reasons
+
+    if matched_generic and not matched_specific and cv_role_family not in {"admin", "finance", "general"}:
+        penalty += 0.10
+        cap = 0.72
+        reasons.append("match hanya berasal dari skill pendukung umum")
+
+    if specific_cv_family and family_aligned and is_generic_job and not mandatory_specific:
+        penalty += 0.08
+        cap = min(cap or 1.0, 0.70)
+        reasons.append("lowongan terlalu umum untuk sinyal CV yang lebih spesifik")
+
+    if specificity < 0.45 and generic_ratio >= 0.65 and requirement_score >= 0.70:
+        penalty += 0.06
+        reasons.append("requirement lowongan didominasi skill umum")
+
+    if cv_role_family in {"admin", "finance"}:
+        penalty *= 0.35
+        cap = None
+
+    return min(0.22, penalty), cap, reasons[:3]
+
+
+def specificity_bonus(job, is_auto_mode, cv_role_family, job_family):
+    if not is_auto_mode:
+        return 0.0
+    if cv_role_family not in SPECIFIC_AUTO_FAMILIES:
+        return 0.0
+    if role_family_match_score(cv_role_family, job_family) < 0.65:
+        return 0.0
+    specificity = float(job.get("jobSpecificity", 0.55))
+    if specificity < 0.70:
+        return 0.0
+    return min(0.06, (specificity - 0.65) * 0.16)
+
+
 def core_role_evidence(expected_family, cv_weighted_skills, skill_evidence):
     core_skills = CORE_ROLE_SKILLS.get(expected_family, set())
     if not core_skills:
@@ -665,7 +637,7 @@ def core_role_evidence(expected_family, cv_weighted_skills, skill_evidence):
         # should not overpower a CV whose main evidence is from another family.
         sufficient = (len(matched) >= 2 and len(strong_matched) >= 1 and len(weak_only_matched) < len(matched))
     else:
-        supporting_only = all(skill in GENERAL_SUPPORT_SKILLS for skill in matched)
+        supporting_only = expected_family not in {"admin", "finance"} and all(skill in GENERAL_SUPPORT_SKILLS for skill in matched)
         sufficient = bool(matched) and not supporting_only and len(weak_only_matched) < len(matched)
 
     return {
@@ -928,13 +900,13 @@ def calculate_final_score(
     Weighted hybrid scoring formula.
 
     Targeted mode weights (rationale):
-      40% Skill Match     — primary signal; technical overlap is most reliable
-      20% Role Match      — ensures job title relevance to user's target
-      15% Semantic        — context similarity; conservative weight (small model)
-      15% Education Match — domain alignment provides meaningful signal
-      10% Transferable    — broad token overlap as weaker supporting signal
+      40% Skill Match     â€” primary signal; technical overlap is most reliable
+      20% Role Match      â€” ensures job title relevance to user's target
+      15% Semantic        â€” context similarity; conservative weight (small model)
+      15% Education Match â€” domain alignment provides meaningful signal
+      10% Transferable    â€” broad token overlap as weaker supporting signal
 
-    Auto mode (no target role) — role_score removed; semantic gets higher weight:
+    Auto mode (no target role) â€” role_score removed; semantic gets higher weight:
       45% Skill Match
       25% Semantic
       15% Transferable
@@ -1112,7 +1084,7 @@ def build_improvements(detected_skills, missing_skills, weighted_skills=None, ta
         )
         return improvements
 
-    # K11+K12: Skills detected but with low confidence — suggest strengthening context
+    # K11+K12: Skills detected but with low confidence â€” suggest strengthening context
     if weighted_skills:
         soft_skill_names = {
             "time management", "problem solving", "teamwork", "collaboration",
@@ -1597,11 +1569,14 @@ def candidate_prefilter_score(job, cv_weighted_skills, target_role, cv_tokens, t
     transfer_score = token_overlap_ratio(cv_tokens, job["descriptionTokens"])
     education_score = education_match_score(education_profile, job["jobDomains"])
     role_score = 0.0 if is_auto_mode else role_match_score(target_role, job["title"], job["description"])
-    job_family = role_family_from_text(f"{job['title']}. {job.get('keyword', '')}.", job.get("jobDomains", []))
+    job_family = job.get("jobFamily") or role_family_from_text(f"{job['title']}. {job.get('keyword', '')}.", job.get("jobDomains", []))
     family_score = role_family_match_score(cv_role_family, job_family)
     corpus_score = jobs_service.corpus_relevance_score(f"{target_role}. {' '.join(cv_weighted_skills)}", job)
+    specificity = float(job.get("jobSpecificity", 0.55))
+    generic_penalty = 0.07 if is_auto_mode and cv_role_family in SPECIFIC_AUTO_FAMILIES and job.get("isGenericJob") else 0.0
+    specificity_lift = min(0.05, max(0.0, specificity - 0.65) * 0.12) if is_auto_mode and family_score >= 0.65 else 0.0
 
-    return (
+    return max(0.0, (
         (0.30 * skill_score)
         + (0.20 * family_score)
         + (0.18 * cv_overlap)
@@ -1609,7 +1584,9 @@ def candidate_prefilter_score(job, cv_weighted_skills, target_role, cv_tokens, t
         + (0.10 * role_score)
         + (0.08 * education_score)
         + (0.05 * transfer_score)
-    )
+        + specificity_lift
+        - generic_penalty
+    ))
 
 
 def lightweight_candidate_score(job, cv_weighted_skills, target_role, cv_tokens, education_profile, is_auto_mode, cv_role_family):
@@ -1621,23 +1598,29 @@ def lightweight_candidate_score(job, cv_weighted_skills, target_role, cv_tokens,
     transfer_score = token_overlap_ratio(cv_tokens, job["requirementTokens"])
     education_score = education_match_score(education_profile, job["jobDomains"])
     role_score = 0.0 if is_auto_mode else role_match_score(target_role, job["title"], job["description"])
-    job_family = role_family_from_text(f"{job['title']}. {job.get('keyword', '')}.", job.get("jobDomains", []))
+    job_family = job.get("jobFamily") or role_family_from_text(f"{job['title']}. {job.get('keyword', '')}.", job.get("jobDomains", []))
     family_score = role_family_match_score(cv_role_family, job_family)
+    specificity = float(job.get("jobSpecificity", 0.55))
+    generic_penalty = 0.06 if is_auto_mode and cv_role_family in SPECIFIC_AUTO_FAMILIES and job.get("isGenericJob") else 0.0
+    specificity_lift = min(0.04, max(0.0, specificity - 0.65) * 0.10) if is_auto_mode and family_score >= 0.65 else 0.0
 
-    return (
+    return max(0.0, (
         (0.34 * skill_score)
         + (0.24 * family_score)
         + (0.18 * cv_overlap)
         + (0.12 * role_score)
         + (0.07 * education_score)
         + (0.05 * transfer_score)
-    )
+        + specificity_lift
+        - generic_penalty
+    ))
 
 
 def select_candidate_jobs(jobs, cv_weighted_skills, target_role, cv_text, education_profile, is_auto_mode, cv_role_family):
     cv_tokens = token_set(cv_text[:2500])
     target_tokens = token_set(target_role)
     candidate_pool = jobs
+    candidate_limit = AUTO_MAX_CANDIDATE_JOBS if is_auto_mode else MAX_CANDIDATE_JOBS
 
     if not is_auto_mode:
         role_matched_jobs = [
@@ -1645,7 +1628,7 @@ def select_candidate_jobs(jobs, cv_weighted_skills, target_role, cv_text, educat
             if fast_target_overlap_score(target_role, target_tokens, job) >= 0.25
             or role_family_match_score(
                 cv_role_family,
-                role_family_from_text(f"{job['title']}. {job.get('keyword', '')}.", job.get("jobDomains", [])),
+                job.get("jobFamily") or role_family_from_text(f"{job['title']}. {job.get('keyword', '')}.", job.get("jobDomains", [])),
             ) >= 0.65
         ]
         if role_matched_jobs:
@@ -1654,14 +1637,13 @@ def select_candidate_jobs(jobs, cv_weighted_skills, target_role, cv_text, educat
         family_matched_jobs = [
             job for job in jobs
             if role_family_match_score(
-                cv_role_family,
-                role_family_from_text(f"{job['title']}. {job.get('keyword', '')}.", job.get("jobDomains", [])),
+                cv_role_family, job.get("jobFamily")
             ) >= 0.65
         ]
         if family_matched_jobs:
             candidate_pool = family_matched_jobs
 
-    lightweight_limit = max(MAX_CANDIDATE_JOBS * 3, 350)
+    lightweight_limit = max(candidate_limit * (2 if is_auto_mode else 3), 220 if is_auto_mode else 300)
     if len(candidate_pool) > lightweight_limit:
         candidate_pool = sorted(
             candidate_pool,
@@ -1692,13 +1674,70 @@ def select_candidate_jobs(jobs, cv_weighted_skills, target_role, cv_text, educat
         reverse=True,
     )
 
-    return ranked_jobs[: min(MAX_CANDIDATE_JOBS, len(ranked_jobs))]
+    return ranked_jobs[: min(candidate_limit, len(ranked_jobs))]
+
+
+ANALYSIS_CACHE = {}
+MAX_ANALYSIS_CACHE_ITEMS = 50
+
+
+def get_file_md5(file_path):
+    hash_md5 = hashlib.md5()
+    with open(file_path, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
+
+
+def analysis_cache_signature():
+    jobs_signature = jobs_service.get_jobs_cache_signature()
+    return json.dumps(
+        {
+            "jobs": jobs_signature,
+            "nlp": NLP_CACHE_VERSION,
+            "scoring": SCORING_CACHE_VERSION,
+        },
+        sort_keys=True,
+        default=str,
+    )
+
+
+def new_analysis_id():
+    return f"analysis-{uuid.uuid4().hex}"
+
+
+def clone_cached_analysis(payload):
+    cached = copy.deepcopy(payload)
+    cached["id"] = new_analysis_id()
+    cached["date"] = time.strftime("%d %B %Y")
+    return cached
 
 
 def analyze_cv_file(pdf_path, target_role, analysis_mode="targeted"):
+    total_started = time.perf_counter()
+    stage_timings = {}
+    try:
+        pdf_hash = get_file_md5(pdf_path)
+    except Exception:
+        pdf_hash = None
+
+    normalized_target = clean_text(target_role or "")
+    signature = analysis_cache_signature()
+    cache_key = (pdf_hash, normalized_target, analysis_mode, signature)
+    if pdf_hash and cache_key in ANALYSIS_CACHE:
+        logger.info("Found CV analysis in memory cache.")
+        return clone_cached_analysis(ANALYSIS_CACHE[cache_key])
+
+    stage_started = time.perf_counter()
     jobs = jobs_service.prepare_jobs_once()
+    log_analysis_stage(stage_timings, "prepare_jobs", stage_started)
+
+    stage_started = time.perf_counter()
     cv_text = extract_text_from_pdf(pdf_path)
     cv_text_length = len(cv_text.strip())
+    log_analysis_stage(stage_timings, "extract_text", stage_started)
+
+    stage_started = time.perf_counter()
     # --- GEMINI API INTEGRATION & FALLBACK ---
     gemini_profile = extract_profile_with_gemini(cv_text, target_role=target_role)
     gemini_summary = ""
@@ -1800,9 +1839,10 @@ def analyze_cv_file(pdf_path, target_role, analysis_mode="targeted"):
         target_role if not is_auto_mode else "",
         target_available,
     )
+    log_analysis_stage(stage_timings, "parse_cv", stage_started)
 
     if cv_text_length < MIN_EXTRACTED_TEXT_LENGTH:
-        return {
+        payload = {
             "id": f"analysis-{int(time.time() * 1000)}",
             "targetRole": effective_target,
             "analysisMode": analysis_mode,
@@ -1842,8 +1882,18 @@ def analyze_cv_file(pdf_path, target_role, analysis_mode="targeted"):
             "benchmarkWarnings": benchmark_warnings,
             "_cvText": cv_text,
         }
+        logger.info(
+            "Analysis completed in %.2fs mode=%s target=%s jobs=%s timings=%s",
+            time.perf_counter() - total_started,
+            analysis_mode,
+            target_role,
+            0,
+            {key: round(value, 2) for key, value in stage_timings.items()},
+        )
+        return payload
 
     processed_jobs = []
+    stage_started = time.perf_counter()
     candidate_jobs = select_candidate_jobs(
         jobs,
         cv_weighted_skills,
@@ -1853,7 +1903,9 @@ def analyze_cv_file(pdf_path, target_role, analysis_mode="targeted"):
         is_auto_mode,
         cv_role_family,
     )
+    log_analysis_stage(stage_timings, "select_candidates", stage_started)
 
+    stage_started = time.perf_counter()
     for job in candidate_jobs:
         title = job["title"]
         company = job["company"]
@@ -1877,9 +1929,9 @@ def analyze_cv_file(pdf_path, target_role, analysis_mode="targeted"):
             nice_to_have_skills,
             soft_skills,
         )
-        job_family = role_family_from_text(f"{title}. {job.get('keyword', '')}. {description[:900]}", job.get("jobDomains", []))
+        job_family = job.get("jobFamily") or role_family_from_text(f"{title}. {job.get('keyword', '')}. {description[:900]}", job.get("jobDomains", []))
         role_family_score = role_family_match_score(cv_role_family, job_family)
-        corpus_query = f"{target_role}. {' '.join(detected_skills[:12])}. {cv_text[:1400]}"
+        corpus_query = f"{target_role}. {' '.join(detected_skills[:12])}. {cv_text[:700]}"
         corpus_score = jobs_service.corpus_relevance_score(corpus_query, job)
         role_score = 0.0 if is_auto_mode else role_match_score(target_role, title, description)
         transfer_score = transferable_score(detected_skills, job_text)
@@ -1903,6 +1955,17 @@ def analyze_cv_file(pdf_path, target_role, analysis_mode="targeted"):
             corpus_score=corpus_score,
             requirement_score=requirement_fit["score"],
         )
+        generic_penalty, generic_cap, specificity_reasons = generic_job_adjustment(
+            job,
+            matched_skills,
+            cv_role_family,
+            job_family,
+            requirement_fit,
+        )
+        specificity_lift = specificity_bonus(job, is_auto_mode, cv_role_family, job_family)
+        final_score = max(0.0, min(1.0, final_score + specificity_lift - generic_penalty))
+        if generic_cap is not None:
+            final_score = min(final_score, generic_cap)
         if target_core_evidence["required"] and not target_core_evidence["sufficient"] and role_family_score >= 0.65:
             final_score = min(final_score, 0.42)
         risk_flags = []
@@ -1914,6 +1977,8 @@ def analyze_cv_file(pdf_path, target_role, analysis_mode="targeted"):
             risk_flags.append("weak_skill_evidence")
         if target_core_evidence["required"] and not target_core_evidence["sufficient"] and role_family_score >= 0.65:
             risk_flags.append("core_role_evidence_missing")
+        if generic_penalty >= 0.10:
+            risk_flags.append("generic_skill_only_match")
         ranking_reasons = build_ranking_reasons(
             matched_skills,
             role_family_score,
@@ -1974,6 +2039,9 @@ def analyze_cv_file(pdf_path, target_role, analysis_mode="targeted"):
                 "weakEvidence": weak_evidence,
                 "missingEvidence": missing_evidence,
                 "coreRoleEvidence": target_core_evidence,
+                "jobSpecificity": round(float(job.get("jobSpecificity", 0.55)) * 100),
+                "genericSkillPenalty": round(generic_penalty * 100),
+                "specificityReasons": specificity_reasons,
                 "evidenceBreakdown": {
                     skill: skill_evidence.get(skill, {"label": "unknown", "source": "unknown", "weight": round(cv_weighted_skills.get(skill, 1.0), 2)})
                     for skill in matched_skills
@@ -2024,11 +2092,15 @@ def analyze_cv_file(pdf_path, target_role, analysis_mode="targeted"):
                     "educationMatch": round(education_score * 100),
                     "seniorityMatch": round(seniority_score * 100),
                     "corpusRelevance": round(corpus_score * 100),
+                    "jobSpecificity": round(float(job.get("jobSpecificity", 0.55)) * 100),
+                    "genericSkillPenalty": round(generic_penalty * 100),
                     "missingSkillPenalty": round(min(20, missing_ratio * 20)),
                 },
             }
         )
+    log_analysis_stage(stage_timings, "score_jobs", stage_started)
 
+    stage_started = time.perf_counter()
     eligible_jobs = [job for job in processed_jobs if job.get("displayEligible")]
     eligible_jobs.sort(key=lambda item: item["match"], reverse=True)
     top_jobs = eligible_jobs[:TOP_K]
@@ -2111,8 +2183,8 @@ def analyze_cv_file(pdf_path, target_role, analysis_mode="targeted"):
             cv_role_family,
         )
 
-    return {
-        "id": f"analysis-{int(time.time() * 1000)}",
+    res_payload = {
+        "id": new_analysis_id(),
         "targetRole": effective_target,
         "analysisMode": analysis_mode,
         "date": time.strftime("%d %B %Y"),
@@ -2161,3 +2233,21 @@ def analyze_cv_file(pdf_path, target_role, analysis_mode="targeted"):
         },
         "_cvText": cv_text,
     }
+    log_analysis_stage(stage_timings, "build_response", stage_started)
+
+    if pdf_hash:
+        if len(ANALYSIS_CACHE) >= MAX_ANALYSIS_CACHE_ITEMS:
+            first_key = next(iter(ANALYSIS_CACHE))
+            ANALYSIS_CACHE.pop(first_key, None)
+        ANALYSIS_CACHE[cache_key] = copy.deepcopy(res_payload)
+
+    logger.info(
+        "Analysis completed in %.2fs mode=%s target=%s candidates=%s displayed=%s timings=%s",
+        time.perf_counter() - total_started,
+        analysis_mode,
+        target_role,
+        len(candidate_jobs),
+        len(top_jobs),
+        {key: round(value, 2) for key, value in stage_timings.items()},
+    )
+    return res_payload

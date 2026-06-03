@@ -160,6 +160,16 @@
     "forbiddenTopRoleKeywords": ["manager", "designer", "sales"]
   },
   {
+    "id": "data_ml_auto_not_generic_admin",
+    "name": "CV data machine learning auto tidak kalah oleh administrasi umum",
+    "targetRole": "Pekerjaan paling cocok dari CV",
+    "analysisMode": "auto",
+    "cvText": "Mahasiswa Sistem Informasi dengan minat data science dan machine learning. Berpengalaman mengolah data menggunakan Python, database, Excel, ERP Odoo, visualisasi data, preprocessing, klasifikasi, clustering, dan membuat project website e commerce serta sistem informasi. Pernah menjadi bendahara organisasi dan mengelola administrasi laporan keuangan, tetapi minat utama tetap data science dan machine learning.",
+    "expectedSkills": ["python", "database", "excel", "machine learning", "erp"],
+    "expectedTopRoleKeywords": ["data", "analyst", "analis", "system"],
+    "forbiddenTopRoleKeywords": ["administrasi", "administrative staff", "admin staff"]
+  },
+  {
     "id": "unavailable_dokter_for_it_cv",
     "name": "Target dokter tidak tersedia untuk CV IT",
     "targetRole": "Dokter",

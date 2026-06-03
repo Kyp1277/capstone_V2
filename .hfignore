@@ -1,0 +1,21 @@
+.git/
+.sixth/
+.codex-python-packages/
+.codex-*.log
+node_modules/
+dist/
+__pycache__/
+**/__pycache__/
+*.pyc
+*.log
+
+backend/.env
+backend/data/processed_jobs_cache.json
+
+CV GENBI 2.pdf
+CV Rifky.pdf
+hasil genbi.pdf
+cv/
+genbi_preview/
+hf-timeout-patch-send.zip
+hf-timeout-patch-send/

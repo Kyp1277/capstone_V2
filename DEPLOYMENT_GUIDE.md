@@ -1,15 +1,15 @@
 # 🚀 Panduan Deployment JobFit - Fullstack & Database (100% Gratis & Gacor)
 
-Dokumen ini menjelaskan langkah-langkah praktis untuk men-deploy aplikasi **JobFit** (Frontend Vite + Backend Express Node.js + Engine Python ML + PostgreSQL) secara gratis dengan spesifikasi tinggi tanpa terkena *Out of Memory (OOM)*.
+Dokumen ini menjelaskan langkah-langkah praktis untuk men-deploy aplikasi **JobFit** (Frontend Vite + Backend Express Node.js + Engine Python rule-based + PostgreSQL) secara gratis dan stabil.
 
 ---
 
 ## 🏆 Opsi Utama: Hugging Face Spaces (Docker Space) - *Rekomendasi Utama (RAM 16GB!)*
 
-Karena sistem JobFit menggunakan modul machine learning Python (`sentence-transformers`, `easyocr`, dll.) yang membutuhkan RAM cukup besar (minimal 1GB - 1.5GB saat memuat model PyTorch), men-deploy di **Render Free Tier** (512MB RAM) sering kali memicu **OOM (Out Of Memory) Crash (Exit Code 137)**.
+Sistem rekomendasi JobFit berjalan offline-first dengan rule-based scoring, BM25/IDF lokal, taxonomy role, dan token-cosine fallback. Mode production tidak membutuhkan TensorFlow Hub, ChatGPT/Gemini API, AutoML, atau pretrained semantic model untuk matching pekerjaan.
 
 **Hugging Face Spaces** menyediakan container Docker gratis dengan spesifikasi luar biasa:
-* **RAM: 16 GB** (Sangat lancar untuk AI/ML)
+* **RAM: 16 GB** (cukup lega untuk backend dan cache dataset)
 * **vCPU: 2 Cores**
 * **Biaya: 100% GRATIS 24/7**
 
@@ -29,7 +29,14 @@ Karena sistem JobFit menggunakan modul machine learning Python (`sentence-transf
    * `JOBS_SOURCE` = `postgres`
    * `JOBS_TABLE` = `jobs`
    * `APP_ENV` = `production`
-   * `GEMINI_API_KEY` = *(Kunci API Gemini Anda)*
+   * `HOST` = `0.0.0.0`
+   * `PORT` = `7860`
+   * `JOBFIT_ENABLE_GEMINI` = `false`
+   * `JOBFIT_ENABLE_SEMANTIC_MODEL` = `false`
+   * `PYTHON_ANALYSIS_TIMEOUT_MS` = `90000`
+   * `MAX_CANDIDATE_JOBS` = `150`
+   * `AUTO_MAX_CANDIDATE_JOBS` = `120`
+   * `FRONTEND_ORIGINS` = `https://jobfit-project.vercel.app`
    * `RESEND_API_KEY` = *(Disarankan untuk Hugging Face Spaces karena SMTP 587/465 dapat diblokir)*
    * `EMAIL_FROM` = `JobFit <onboarding@resend.dev>` *(atau domain email Anda yang sudah diverifikasi di Resend)*
    * `SMTP_HOST` = *(Opsional fallback jika deploy di platform yang mendukung SMTP)*
@@ -63,4 +70,4 @@ Jika Anda tetap ingin menggunakan Render:
 3. Pilih runtime **Docker** (bukan Node), karena file `Dockerfile` kita akan mengonfigurasi Node dan Python sekaligus secara otomatis.
 4. Pilih plan **Free**.
 5. Masukkan Environment Variables di dashboard Render.
-6. *Catatan*: Jika aplikasi mengalami crash karena kehabisan RAM (OOM), Anda harus mengoptimalkan penggunaan memori dengan meminimalkan ukuran model ML lokal atau beralih sepenuhnya ke API Gemini untuk proses pemetaan.
+6. *Catatan*: Jika aplikasi mengalami crash karena kehabisan RAM (OOM) atau analisis melewati timeout, pastikan mode production tetap offline-first (`JOBFIT_ENABLE_GEMINI=false`, `JOBFIT_ENABLE_SEMANTIC_MODEL=false`), cache lowongan sudah diprewarm, `PYTHON_ANALYSIS_TIMEOUT_MS=90000`, `MAX_CANDIDATE_JOBS=150`, dan `AUTO_MAX_CANDIDATE_JOBS=120`.

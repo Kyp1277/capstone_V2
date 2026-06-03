@@ -48,39 +48,51 @@ export function renderSettings() {
           <form class="account-settings-form" data-account-form="password" novalidate>
             <div class="form-field">
               <label for="currentPassword">Password saat ini</label>
-              <input
-                class="text-input"
-                id="currentPassword"
-                name="currentPassword"
-                type="password"
-                autocomplete="current-password"
-                required
-              />
+              <div style="position: relative; display: flex; align-items: center;">
+                <input
+                  class="text-input"
+                  id="currentPassword"
+                  name="currentPassword"
+                  type="password"
+                  autocomplete="current-password"
+                  required
+                  style="width: 100%; padding-right: 40px;"
+                />
+                <button type="button" data-action="toggle-password" data-target="currentPassword" style="position: absolute; right: 12px; background: none; border: none; cursor: pointer; color: var(--muted); font-size: 16px; padding: 4px; display: flex; align-items: center; justify-content: center;" aria-label="Tampilkan password">👁️</button>
+              </div>
             </div>
             <div class="account-password-grid">
               <div class="form-field">
                 <label for="newPassword">Password baru</label>
-                <input
-                  class="text-input"
-                  id="newPassword"
-                  name="newPassword"
-                  type="password"
-                  autocomplete="new-password"
-                  minlength="6"
-                  required
-                />
+                <div style="position: relative; display: flex; align-items: center;">
+                  <input
+                    class="text-input"
+                    id="newPassword"
+                    name="newPassword"
+                    type="password"
+                    autocomplete="new-password"
+                    minlength="6"
+                    required
+                    style="width: 100%; padding-right: 40px;"
+                  />
+                  <button type="button" data-action="toggle-password" data-target="newPassword" style="position: absolute; right: 12px; background: none; border: none; cursor: pointer; color: var(--muted); font-size: 16px; padding: 4px; display: flex; align-items: center; justify-content: center;" aria-label="Tampilkan password">👁️</button>
+                </div>
               </div>
               <div class="form-field">
                 <label for="confirmPassword">Konfirmasi password</label>
-                <input
-                  class="text-input"
-                  id="confirmPassword"
-                  name="confirmPassword"
-                  type="password"
-                  autocomplete="new-password"
-                  minlength="6"
-                  required
-                />
+                <div style="position: relative; display: flex; align-items: center;">
+                  <input
+                    class="text-input"
+                    id="confirmPassword"
+                    name="confirmPassword"
+                    type="password"
+                    autocomplete="new-password"
+                    minlength="6"
+                    required
+                    style="width: 100%; padding-right: 40px;"
+                  />
+                  <button type="button" data-action="toggle-password" data-target="confirmPassword" style="position: absolute; right: 12px; background: none; border: none; cursor: pointer; color: var(--muted); font-size: 16px; padding: 4px; display: flex; align-items: center; justify-content: center;" aria-label="Tampilkan password">👁️</button>
+                </div>
               </div>
             </div>
             <button class="btn btn-secondary" type="submit">Ganti Password</button>

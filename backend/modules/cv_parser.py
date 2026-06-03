@@ -16,8 +16,8 @@ _MIN_TEXT_LENGTH = int(os.environ.get("MIN_EXTRACTED_TEXT_LENGTH", "80"))
 # OCR FALLBACK
 # =========================================
 # K4: If pdfplumber returns too little text (scanned PDF), try OCR.
-# Requires either pytesseract+Pillow or easyocr to be installed.
-# Gracefully degrades if neither is available.
+# Optional OCR uses a local Tesseract installation when available.
+# The default dependency set only relies on pdfplumber for text-layer PDFs.
 
 def _ocr_with_pytesseract(pdf_path):
     """Extract text from scanned PDF using pytesseract (tesseract-ocr)."""
@@ -46,53 +46,18 @@ def _ocr_with_pytesseract(pdf_path):
         return None
 
 
-def _ocr_with_easyocr(pdf_path):
-    """Extract text from scanned PDF using easyocr."""
-    try:
-        import easyocr
-        import pdfplumber
-        import numpy as np
-    except ImportError:
-        return None
-
-    try:
-        reader = easyocr.Reader(["id", "en"], gpu=False, verbose=False)
-        text_parts = []
-        with pdfplumber.open(pdf_path) as pdf:
-            for page in pdf.pages:
-                img = page.to_image(resolution=200).original
-                img_array = np.array(img)
-                results = reader.readtext(img_array, detail=0, paragraph=True)
-                if results:
-                    text_parts.append("\n".join(results))
-        result = "\n".join(text_parts).strip()
-        if result:
-            logger.info("easyocr OCR extracted %d chars from %s", len(result), pdf_path)
-        return result or None
-    except Exception:
-        logger.exception("easyocr OCR failed for: %s", pdf_path)
-        return None
-
-
 def _attempt_ocr(pdf_path):
     """
-    Try available OCR engines in order: pytesseract first, then easyocr.
+    Try local Tesseract OCR when available.
     Returns extracted text or empty string if all fail or none installed.
     """
-    # Try pytesseract first (lighter dependency)
     result = _ocr_with_pytesseract(pdf_path)
-    if result:
-        return result
-
-    # Fallback to easyocr
-    result = _ocr_with_easyocr(pdf_path)
     if result:
         return result
 
     logger.warning(
         "OCR fallback unavailable for %s. "
-        "Install pytesseract (pip install pytesseract Pillow) or "
-        "easyocr (pip install easyocr) to enable scanned PDF support.",
+        "Install Tesseract plus pytesseract/Pillow to enable scanned PDF support.",
         pdf_path,
     )
     return ""

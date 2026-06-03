@@ -82,11 +82,19 @@ function animateCount(element) {
   const duration = 850;
   const start = performance.now();
 
+  const isScoreValue = element.classList.contains("score-value");
+  const parent = isScoreValue ? element.parentElement : null;
+
   function tick(now) {
     const progress = Math.min((now - start) / duration, 1);
     const eased = 1 - Math.pow(1 - progress, 3);
     const value = Math.round(target * eased);
     element.textContent = `${value}${hasPercent ? "%" : ""}`;
+
+    if (parent) {
+      const color = scoreColor(value);
+      parent.style.background = `radial-gradient(circle at center, var(--score-hole) 58%, transparent 59%), conic-gradient(${color} 0% ${value}%, var(--border) ${value}% 100%)`;
+    }
 
     if (progress < 1) {
       window.requestAnimationFrame(tick);

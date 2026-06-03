@@ -143,6 +143,43 @@ def test_exact_match_takes_priority():
     print(f"  [OK] Exact matches correctly prioritised over fuzzy")
 
 
+def test_fuzzy_trigram_matching():
+    """Fuzzy matching should detect trigram skills/aliases with typos (Opsi 1)."""
+    # Test case 1: "google clod platform" -> matches synonym "google cloud platform" -> resolves to canonical "gcp"
+    text_gcp = "We are deploying our system on a google clod platform environment."
+    skills_gcp, types_gcp = extract_skills_with_types(text_gcp)
+    assert "gcp" in skills_gcp, f"Expected 'gcp' to be matched from 'google clod platform', got: {skills_gcp}"
+    assert types_gcp.get("gcp") == "fuzzy", f"'gcp' match type should be 'fuzzy', got: {types_gcp.get('gcp')}"
+    print(f"  [OK] Trigram typo 'google clod platform' -> 'gcp' (fuzzy)")
+
+    # Test case 2: "amazon web service" -> matches synonym "amazon web service" -> resolves to "amazon web services"
+    text_aws = "Our backend is hosted on amazon web service (AWS)."
+    skills_aws, types_aws = extract_skills_with_types(text_aws)
+    assert "amazon web services" in skills_aws, f"Expected 'amazon web services' to be matched from 'amazon web service', got: {skills_aws}"
+    # Note: "amazon web service" is a synonym. Depending on exact/fuzzy matching, it should match.
+    print(f"  [OK] Trigram synonym 'amazon web service' -> 'amazon web services' (match type: {types_aws.get('amazon web services')})")
+
+
+def test_fuzzy_trigram_stop_word_and_random_regression():
+    """Verify that common stopword-prefixed phrases and random texts do not trigger false positive skills."""
+    # Test case 1: Prefix with stopword like "and data analysis" should not generate a fuzzy match for the full trigram
+    text_stop = "I do programming and data analysis"
+    # "and data analysis" as a trigram starts with "and". It should be skipped by trigram generator.
+    # The bigram "data analysis" is generated and exact-matched.
+    skills, types = extract_skills_with_types(text_stop)
+    # Ensure "data analysis" is detected, but match type is exact (since bigram is exact)
+    assert "data analysis" in skills
+    assert types.get("data analysis") == "exact"
+    print("  [OK] Stopword prefixed trigram successfully skipped, exact bigram preserved.")
+
+    # Test case 2: Completely random phrase should not match any skills
+    random_text = "lorem ipsum dolor sit amet, consectetur adipiscing elit."
+    skills_rand = extract_skills(random_text)
+    # Check that it doesn't match anything
+    assert len(skills_rand) == 0, f"Random words matched unexpected skills: {skills_rand}"
+    print("  [OK] Random noise words correctly ignored (no false positives).")
+
+
 if __name__ == "__main__":
     print("\n" + "=" * 60)
     print("  FUZZY SKILL MATCHING — UNIT TESTS")
@@ -157,6 +194,8 @@ if __name__ == "__main__":
         ("extract_skills_with_types", test_extract_skills_with_types),
         ("weighted skills fuzzy penalty", test_extract_weighted_skills_fuzzy_penalty),
         ("exact match takes priority", test_exact_match_takes_priority),
+        ("trigram fuzzy matching", test_fuzzy_trigram_matching),
+        ("trigram stopword & regression guards", test_fuzzy_trigram_stop_word_and_random_regression),
     ]
 
     passed = 0

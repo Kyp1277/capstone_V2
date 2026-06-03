@@ -1,6 +1,6 @@
 import { API_BASE_URL, state } from "./state.js";
 
-const DEFAULT_TIMEOUT_MS = 120000;
+const DEFAULT_TIMEOUT_MS = 150000;
 
 export const http = {
   get(url, config = {}) {
@@ -99,6 +99,10 @@ function createHttpError(response, payload) {
 }
 
 export function apiErrorMessage(error, fallback = "Layanan sedang bermasalah. Coba beberapa saat lagi.") {
+  if (error?.response?.status === 504) {
+    return "Analisis terlalu lama. Coba mode target spesifik atau CV PDF teks yang lebih ringkas.";
+  }
+
   const detail = error?.response?.data?.detail || error?.response?.data?.error;
 
   if (typeof detail === "string") {

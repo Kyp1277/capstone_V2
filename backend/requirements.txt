@@ -3,10 +3,6 @@ pdfplumber
 fastapi
 uvicorn[standard]
 python-multipart
-sentence-transformers
 psycopg[binary]
 rapidfuzz
-easyocr
-google-generativeai
-
 

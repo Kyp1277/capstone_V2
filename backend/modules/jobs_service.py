@@ -1,6 +1,7 @@
 import json
 import logging
 import math
+import os
 import re
 import threading
 from collections import Counter
@@ -17,6 +18,24 @@ PROCESSED_JOBS_CACHE = None
 PROCESSED_JOBS_LOCK = threading.Lock()
 CORPUS_IDF = {}
 CORPUS_AVG_LENGTH = 1.0
+JOBS_CACHE_SCHEMA_VERSION = "job-cache-generic-specificity-v1"
+
+GENERIC_SUPPORT_SKILLS = {
+    "administration", "administrative", "budgeting", "communication", "collaboration",
+    "data entry", "excel", "finance", "leadership", "microsoft office",
+    "powerpoint", "problem solving", "teamwork", "time management", "word",
+}
+
+GENERIC_TITLE_TOKENS = {
+    "admin", "administrasi", "administration", "assistant", "asisten", "crew",
+    "helper", "operator", "staff", "support",
+}
+
+SPECIFIC_TITLE_MARKERS = {
+    "accounting", "analyst", "analis", "backend", "data analyst", "database",
+    "developer", "designer", "engineer", "frontend", "fullstack", "graphic",
+    "hr", "programmer", "recruiter", "sales", "system analyst",
+}
 
 MANDATORY_MARKERS = {
     "required", "requirement", "requirements", "wajib", "harus", "must", "minimal",
@@ -153,6 +172,45 @@ def normalize_location(value):
     return value if value and value.lower() != "unknown" else "Lokasi tidak tersedia"
 
 
+def infer_job_specificity(title, keyword, job_skills, job_family):
+    skill_set = set(job_skills or [])
+    generic_count = len(skill_set & GENERIC_SUPPORT_SKILLS)
+    specific_count = len(skill_set - GENERIC_SUPPORT_SKILLS - SOFT_SKILLS)
+    total = len(skill_set) or 1
+    generic_ratio = generic_count / total
+    title_text = clean_text(f"{title}. {keyword}")
+    title_tokens = set(title_text.split())
+    has_generic_title = bool(title_tokens & GENERIC_TITLE_TOKENS)
+    has_specific_title = any(marker in title_text for marker in SPECIFIC_TITLE_MARKERS)
+
+    specificity = 0.55
+    if has_specific_title:
+        specificity += 0.25
+    if job_family not in {"admin", "general"}:
+        specificity += 0.12
+    if specific_count >= 2:
+        specificity += 0.12
+    elif specific_count == 0:
+        specificity -= 0.18
+    if generic_ratio >= 0.75:
+        specificity -= 0.20
+    if has_generic_title and generic_ratio >= 0.50:
+        specificity -= 0.18
+
+    specificity = max(0.10, min(1.0, specificity))
+    is_generic_job = specificity < 0.50 or (
+        has_generic_title and generic_ratio >= 0.50 and specific_count <= 1
+    )
+
+    return {
+        "genericSkillCount": generic_count,
+        "specificSkillCount": specific_count,
+        "genericSkillRatio": round(generic_ratio, 3),
+        "jobSpecificity": round(specificity, 3),
+        "isGenericJob": is_generic_job,
+    }
+
+
 def prepare_jobs_once():
     global PROCESSED_JOBS_CACHE
     if PROCESSED_JOBS_CACHE is not None:
@@ -170,6 +228,7 @@ def prepare_jobs_once():
             return PROCESSED_JOBS_CACHE
 
         logger.info("Preparing processed jobs cache.")
+        from modules.analysis_service import role_family_from_text
         processed_jobs = []
         for job in load_jobs_once():
             title = str(job.get("title", "Unknown"))
@@ -181,6 +240,8 @@ def prepare_jobs_once():
             job_skills = extract_skills(job_text, fuzzy=False)
             job_domains = infer_job_domains(f"{title}. {keyword}. {description[:1200]}")
             requirements = parse_job_requirements(title, keyword, description, job_skills, job_domains)
+            job_family = role_family_from_text(f"{title}. {keyword}. {description[:900]}", job_domains)
+            specificity = infer_job_specificity(title, keyword, job_skills, job_family)
 
             processed_jobs.append(
                 {
@@ -193,6 +254,8 @@ def prepare_jobs_once():
                     "jobSkills": job_skills,
                     "jobSkillSet": set(job_skills),
                     "jobDomains": job_domains,
+                    "jobFamily": job_family,
+                    **specificity,
                     **requirements,
                     "searchText": clean_text(job_text),
                     "titleTokens": token_set(title),
@@ -265,6 +328,12 @@ def serialize_processed_job(job):
     serialized["softSkills"] = list(job.get("softSkills", []))
     serialized["domainRequirements"] = list(job.get("domainRequirements", []))
     serialized["seniorityRequirement"] = job.get("seniorityRequirement", "entry_level")
+    serialized["jobFamily"] = job.get("jobFamily")
+    serialized["genericSkillCount"] = int(job.get("genericSkillCount", 0))
+    serialized["specificSkillCount"] = int(job.get("specificSkillCount", 0))
+    serialized["genericSkillRatio"] = float(job.get("genericSkillRatio", 0.0))
+    serialized["jobSpecificity"] = float(job.get("jobSpecificity", 0.55))
+    serialized["isGenericJob"] = bool(job.get("isGenericJob", False))
     return serialized
 
 
@@ -281,13 +350,25 @@ def hydrate_processed_job(job):
     hydrated["softSkills"] = list(job.get("softSkills", []))
     hydrated["domainRequirements"] = list(job.get("domainRequirements", []))
     hydrated["seniorityRequirement"] = job.get("seniorityRequirement", "entry_level")
+    hydrated["jobFamily"] = job.get("jobFamily")
+    hydrated["genericSkillCount"] = int(job.get("genericSkillCount", 0))
+    hydrated["specificSkillCount"] = int(job.get("specificSkillCount", 0))
+    hydrated["genericSkillRatio"] = float(job.get("genericSkillRatio", 0.0))
+    hydrated["jobSpecificity"] = float(job.get("jobSpecificity", 0.55))
+    hydrated["isGenericJob"] = bool(job.get("isGenericJob", False))
     return hydrated
 
 
 def get_jobs_cache_signature():
     jobs = load_jobs_once()
     if not jobs:
-        return {"count": 0, "first": "", "last": "", "nlpVersion": NLP_CACHE_VERSION}
+        return {
+            "count": 0,
+            "first": "",
+            "last": "",
+            "nlpVersion": NLP_CACHE_VERSION,
+            "cacheSchemaVersion": JOBS_CACHE_SCHEMA_VERSION,
+        }
 
     first = str(jobs[0].get("fingerprint") or jobs[0].get("job_no") or "")
     last = str(jobs[-1].get("fingerprint") or jobs[-1].get("job_no") or "")
@@ -296,6 +377,7 @@ def get_jobs_cache_signature():
         "first": first,
         "last": last,
         "nlpVersion": NLP_CACHE_VERSION,
+        "cacheSchemaVersion": JOBS_CACHE_SCHEMA_VERSION,
     }
 
 
@@ -326,7 +408,18 @@ def save_processed_jobs_cache(processed_jobs):
         "jobs": [serialize_processed_job(job) for job in processed_jobs],
     }
 
+    temp_path = None
     try:
-        PROCESSED_JOBS_CACHE_PATH.write_text(json.dumps(payload), encoding="utf-8")
+        PROCESSED_JOBS_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = PROCESSED_JOBS_CACHE_PATH.with_name(
+            f"{PROCESSED_JOBS_CACHE_PATH.name}.{os.getpid()}.{threading.get_ident()}.tmp"
+        )
+        temp_path.write_text(json.dumps(payload), encoding="utf-8")
+        temp_path.replace(PROCESSED_JOBS_CACHE_PATH)
     except Exception:
         logger.exception("Failed to write processed jobs cache.")
+        try:
+            if temp_path:
+                temp_path.unlink(missing_ok=True)
+        except Exception:
+            pass

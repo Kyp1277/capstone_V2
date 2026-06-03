@@ -26,25 +26,36 @@ def list_analyses(authorization: Optional[str] = Header(None)):
         raise HTTPException(status_code=500, detail="Riwayat analisis gagal dimuat.") from error
 
 
+UNIQUE_TITLES_CACHE = {
+    "signature": None,
+    "titles": [],
+}
+
+
 @router.get("/titles")
 def autocomplete_titles(q: Optional[str] = ""):
+    global UNIQUE_TITLES_CACHE
     from modules import jobs_service
     jobs = jobs_service.load_jobs_once()
+    signature = jobs_service.get_jobs_cache_signature()
     query = (q or "").strip().lower()
 
-    if not query:
-        # Ambil list judul pekerjaan unik secara default
-        titles = sorted(list(set(str(j.get("title", "")) for j in jobs if j.get("title"))))[:20]
-        return {"titles": titles}
+    if UNIQUE_TITLES_CACHE["signature"] != signature:
+        UNIQUE_TITLES_CACHE = {
+            "signature": signature,
+            "titles": sorted(list(set(str(j.get("title", "")) for j in jobs if j.get("title")))),
+        }
 
-    matching = set()
-    for j in jobs:
-        title = str(j.get("title", ""))
-        if title and query in title.lower():
-            matching.add(title)
+    if not query:
+        return {"titles": UNIQUE_TITLES_CACHE["titles"][:20]}
+
+    matching = []
+    for title in UNIQUE_TITLES_CACHE["titles"]:
+        if query in title.lower():
+            matching.append(title)
             if len(matching) >= 20:
                 break
-    return {"titles": sorted(list(matching))}
+    return {"titles": matching}
 
 
 @router.get("/{analysis_id}")

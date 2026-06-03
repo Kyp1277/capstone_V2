@@ -34,7 +34,10 @@ export function renderLogin() {
 
             <div class="form-field">
               <label for="loginPassword">Password</label>
-              <input class="text-input" id="loginPassword" name="password" type="password" autocomplete="current-password" placeholder="Minimal 6 karakter" />
+              <div style="position: relative; display: flex; align-items: center;">
+                <input class="text-input" id="loginPassword" name="password" type="password" autocomplete="current-password" placeholder="Minimal 6 karakter" style="width: 100%; padding-right: 40px;" />
+                <button type="button" data-action="toggle-password" data-target="loginPassword" style="position: absolute; right: 12px; background: none; border: none; cursor: pointer; color: var(--muted); font-size: 16px; padding: 4px; display: flex; align-items: center; justify-content: center;" aria-label="Tampilkan password">👁️</button>
+              </div>
             </div>
 
             <div class="alert alert-error ${state.auth.error ? "visible" : ""}">
