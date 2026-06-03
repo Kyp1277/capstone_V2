@@ -1,10 +1,17 @@
 import { getInitialTheme, readStorage, writeStorage } from "./utils.js";
 
 // Bisa diganti lewat localStorage jika service analisis jalan di URL berbeda.
+const PRODUCTION_API_BASE_URL = "https://kypli-backend-jobfit.hf.space";
+
 export function getDefaultApiBaseUrl(locationLike = window.location) {
+  const configuredApiBaseUrl = import.meta.env?.VITE_JOBFIT_API_BASE_URL;
+  if (configuredApiBaseUrl) {
+    return configuredApiBaseUrl.replace(/\/$/, "");
+  }
+
   const hostname = locationLike.hostname;
   const isLocalHost = ["localhost", "127.0.0.1", "::1"].includes(hostname);
-  return isLocalHost ? "http://127.0.0.1:5000" : locationLike.origin;
+  return isLocalHost ? "http://127.0.0.1:5000" : PRODUCTION_API_BASE_URL;
 }
 
 const defaultApiBaseUrl = getDefaultApiBaseUrl();

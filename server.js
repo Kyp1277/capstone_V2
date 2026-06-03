@@ -297,7 +297,14 @@ function databaseSslOptions(connectionString) {
 function corsOrigin() {
   if (!isProduction) return "*";
   const origins = csvEnv("FRONTEND_ORIGINS");
-  return origins.length ? origins : false;
+  return (origin, callback) => {
+    if (!origin) return callback(null, true);
+    const normalizedOrigin = origin.replace(/\/$/, "");
+    const allowed =
+      origins.includes(normalizedOrigin) ||
+      /^https:\/\/[a-z0-9-]+(?:-[a-z0-9-]+)*\.vercel\.app$/i.test(normalizedOrigin);
+    return callback(null, allowed ? normalizedOrigin : false);
+  };
 }
 
 function csvEnv(name) {
