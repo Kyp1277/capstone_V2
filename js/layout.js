@@ -1,5 +1,6 @@
 import { state } from "./state.js";
 import { applyTheme, escapeHtml } from "./utils.js";
+import logoMarkUrl from "../assets/jobfit-logo-mark.png";
 
 // Shell adalah layout umum yang membungkus semua halaman.
 export function shell(content) {
@@ -151,7 +152,7 @@ function brandLink() {
   return `
     <a href="#/" class="brand" aria-label="JobFit beranda">
       <span class="brand-mark" aria-hidden="true">
-        <img src="assets/jobfit-logo-mark.png" alt="" width="54" height="42" />
+        <img src="${logoMarkUrl}" alt="" width="54" height="42" />
       </span>
       <span>JobFit</span>
     </a>

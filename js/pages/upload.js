@@ -1,6 +1,7 @@
 import { shell } from "../layout.js";
 import { state } from "../state.js";
 import { escapeHtml, formatBytes } from "../utils.js";
+import logoMarkUrl from "../../assets/jobfit-logo-mark.png";
 
 // Renderer halaman upload CV dan pilihan mode analisis.
 export function renderUpload() {
@@ -15,7 +16,7 @@ export function renderUpload() {
       <section class="analysis-loading-section" aria-live="polite" aria-busy="true">
         <div class="container analysis-loading-inner">
           <div class="analysis-loading-logo-wrap">
-            <img class="analysis-loading-logo" src="assets/jobfit-logo-mark.png" alt="" width="180" height="142" />
+            <img class="analysis-loading-logo" src="${logoMarkUrl}" alt="" width="180" height="142" />
           </div>
           <span class="analysis-loading-spinner" aria-hidden="true"></span>
           <h1>Menganalisis CV Anda</h1>
