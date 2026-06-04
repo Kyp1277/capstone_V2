@@ -6,6 +6,7 @@ import math
 import time
 import uuid
 from collections import Counter
+from functools import lru_cache
 
 from modules import jobs_service
 from modules.config import AUTO_MAX_CANDIDATE_JOBS, MAX_CANDIDATE_JOBS, MIN_EXTRACTED_TEXT_LENGTH, TOP_K
@@ -157,6 +158,8 @@ ROLE_RISK_MESSAGES = {
     "core_role_evidence_missing": "Bukti skill inti untuk role target belum cukup kuat.",
     "generic_skill_only_match": "Kecocokan terutama berasal dari skill umum, bukan bukti role-specific.",
 }
+
+ROLE_FAMILY_TERM_CACHE = None
 
 CORE_ROLE_SKILLS = {
     "frontend": {"html", "css", "javascript", "react", "vue", "angular", "typescript", "next.js", "ui ux"},
@@ -717,24 +720,44 @@ def role_match_score(target_role, title, description):
     return max(title_score, min(description_score, 0.65))
 
 
+def get_role_family_terms():
+    global ROLE_FAMILY_TERM_CACHE
+    if ROLE_FAMILY_TERM_CACHE is None:
+        ROLE_FAMILY_TERM_CACHE = tuple(
+            (
+                family,
+                tuple(
+                    (term_clean, " " in term_clean)
+                    for term_clean in (clean_text(term) for term in terms)
+                    if term_clean
+                ),
+            )
+            for family, terms in ROLE_FAMILIES.items()
+        )
+    return ROLE_FAMILY_TERM_CACHE
+
+
 def role_family_from_text(text, fallback_domains=None):
     cleaned = clean_text(text)
+    fallback_tuple = tuple(fallback_domains or [])
+    return role_family_from_cleaned(cleaned, fallback_tuple)
+
+
+@lru_cache(maxsize=8192)
+def role_family_from_cleaned(cleaned, fallback_domains=()):
     cleaned_tokens = set(cleaned.split())
     scores = {}
 
-    for family, terms in ROLE_FAMILIES.items():
+    for family, terms in get_role_family_terms():
         score = 0.0
-        for term in terms:
-            term_clean = clean_text(term)
-            if not term_clean:
-                continue
-            term_found = f" {term_clean} " in f" {cleaned} " if " " in term_clean else term_clean in cleaned_tokens
+        for term_clean, is_phrase in terms:
+            term_found = f" {term_clean} " in f" {cleaned} " if is_phrase else term_clean in cleaned_tokens
             if term_found:
                 score += 2.0 if term_clean in cleaned[:120] else 1.0
         if score:
             scores[family] = score
 
-    for domain in fallback_domains or []:
+    for domain in fallback_domains:
         for family in DOMAIN_TO_ROLE_FAMILY.get(domain, set()):
             scores[family] = scores.get(family, 0.0) + 0.75
 
@@ -1306,7 +1329,7 @@ def target_available_score(target_role, jobs, target_family):
         title = job.get("title", "")
         keyword = job.get("keyword", "")
         title_keyword_tokens = token_set(f"{title}. {keyword}")
-        job_family = role_family_from_text(
+        job_family = job.get("jobFamily") or role_family_from_text(
             f"{title}. {keyword}.",
             job.get("jobDomains", []),
         )
@@ -1346,7 +1369,7 @@ def suggest_target_roles(cv_role_family, detected_skills, jobs, limit=5):
         if normalized_title in seen_titles:
             continue
 
-        job_family = role_family_from_text(
+        job_family = job.get("jobFamily") or role_family_from_text(
             f"{title}. {job.get('keyword', '')}.",
             job.get("jobDomains", []),
         )
